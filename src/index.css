@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --pos-primary: #f97316;
+  --pos-bg: #111827;
+  --pos-card: #1f2937;
+  --pos-border: #374151;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background-color: var(--pos-bg);
+  color: #f9fafb;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--pos-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--pos-border);
+  border-radius: 3px;
+}
+
+/* Menu item animations */
+@keyframes pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-3deg); }
+  75% { transform: rotate(3deg); }
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(249, 115, 22, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(249, 115, 22, 0.6); }
+}
+
+.menu-item-pop {
+  animation: pop 0.3s ease-in-out;
+}
+
+.menu-item-wiggle {
+  animation: wiggle 0.3s ease-in-out;
+}
+
+.menu-item-glow {
+  animation: glow 0.6s ease-in-out;
+}
+
+.cart-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
