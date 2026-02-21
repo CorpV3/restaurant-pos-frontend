@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import { useAuthStore } from '../../stores/authStore'
 
 interface StatusBarProps {
   onLogout: () => void
 }
 
 export default function StatusBar({ onLogout }: StatusBarProps) {
+  const { user } = useAuthStore()
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [time, setTime] = useState(new Date())
 
@@ -25,14 +27,23 @@ export default function StatusBar({ onLogout }: StatusBarProps) {
   }, [])
 
   return (
-    <div className="h-12 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-4">
+    <div className="h-12 flex-shrink-0 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-4">
       <div className="flex items-center gap-3">
         <span className="text-orange-500 font-bold text-lg">POS</span>
-        <span className="text-gray-400 text-sm">Restaurant POS System</span>
+        {user && (
+          <span className="text-gray-300 text-sm">
+            {user.full_name || user.username}
+            {user.role && (
+              <span className="ml-1 text-xs text-gray-500 capitalize">
+                ({user.role.replace('_', ' ')})
+              </span>
+            )}
+          </span>
+        )}
       </div>
 
       <div className="flex items-center gap-4">
-        <span className="text-gray-300 text-sm">
+        <span className="text-gray-300 text-sm font-mono">
           {time.toLocaleTimeString('en-GB')}
         </span>
         <div className="flex items-center gap-1.5">

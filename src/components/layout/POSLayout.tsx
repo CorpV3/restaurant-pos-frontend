@@ -8,36 +8,34 @@ interface POSLayoutProps {
   onLogout: () => void
 }
 
-const CATEGORIES = [
-  'All',
-  'Starters',
-  'Mains',
-  'Sides',
-  'Drinks',
-  'Desserts',
-]
+const DEFAULT_CATEGORIES = ['All', 'Starters', 'Mains', 'Sides', 'Drinks', 'Desserts']
 
 export default function POSLayout({ onLogout }: POSLayoutProps) {
   const [activeCategory, setActiveCategory] = useState('All')
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
+
+  const handleCategoriesLoaded = (cats: string[]) => {
+    setCategories(cats)
+    setActiveCategory('All')
+  }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900">
-      {/* Status Bar */}
+    <div className="h-screen flex flex-col bg-gray-900 overflow-hidden">
       <StatusBar onLogout={onLogout} />
-
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0">
         {/* Left: Menu Area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0 min-w-0">
           <CategoryBar
-            categories={CATEGORIES}
+            categories={categories}
             active={activeCategory}
             onSelect={setActiveCategory}
           />
-          <MenuGrid category={activeCategory} />
+          <MenuGrid
+            category={activeCategory}
+            onCategoriesLoaded={handleCategoriesLoaded}
+          />
         </div>
-
-        {/* Right: Cart */}
+        {/* Right: Cart - fixed width, full height, scrollable internally */}
         <Cart />
       </div>
     </div>

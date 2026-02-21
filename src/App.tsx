@@ -1,15 +1,20 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
+import { useAuthStore } from './stores/authStore'
 import POSLayout from './components/layout/POSLayout'
 import LoginPage from './pages/LoginPage'
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const { isAuthenticated, logout, restoreSession } = useAuthStore()
 
-  if (!isLoggedIn) {
-    return <LoginPage onLogin={() => setIsLoggedIn(true)} />
+  useEffect(() => {
+    restoreSession()
+  }, [])
+
+  if (!isAuthenticated) {
+    return <LoginPage />
   }
 
-  return <POSLayout onLogout={() => setIsLoggedIn(false)} />
+  return <POSLayout onLogout={logout} />
 }
 
 export default App

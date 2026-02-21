@@ -4,6 +4,7 @@ export interface MenuItem {
   price: number
   category: string
   icon: string
+  imageUrl?: string
   available: boolean
 }
 

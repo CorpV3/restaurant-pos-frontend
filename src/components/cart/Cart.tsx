@@ -9,10 +9,17 @@ export default function Cart() {
 
   return (
     <>
-      <div className="w-96 bg-gray-800 border-l border-gray-700 flex flex-col">
+      <div className="w-96 flex-shrink-0 bg-gray-800 border-l border-gray-700 flex flex-col min-h-0">
         {/* Cart Header */}
-        <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-white">Current Order</h2>
+        <div className="flex-shrink-0 p-4 border-b border-gray-700 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white">
+            Current Order{' '}
+            {items.length > 0 && (
+              <span className="text-sm text-orange-400 font-normal">
+                ({items.reduce((s, i) => s + i.quantity, 0)} items)
+              </span>
+            )}
+          </h2>
           {items.length > 0 && (
             <button
               onClick={clearCart}
@@ -23,8 +30,8 @@ export default function Cart() {
           )}
         </div>
 
-        {/* Cart Items */}
-        <div className="flex-1 overflow-y-auto p-3">
+        {/* Cart Items - scrollable middle section */}
+        <div className="flex-1 overflow-y-auto p-3 min-h-0">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500">
               <span className="text-4xl mb-2">🛒</span>
@@ -38,36 +45,30 @@ export default function Cart() {
                   key={item.menuItem.id}
                   className="bg-gray-700 rounded-lg p-3 cart-slide-in"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <p className="text-white text-sm font-medium">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-medium truncate">
                         {item.menuItem.icon} {item.menuItem.name}
                       </p>
                       <p className="text-orange-400 text-sm">
                         £{(item.menuItem.price * item.quantity).toFixed(2)}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() =>
-                          updateQuantity(
-                            item.menuItem.id,
-                            item.quantity - 1
-                          )
+                          updateQuantity(item.menuItem.id, item.quantity - 1)
                         }
                         className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
                       >
                         -
                       </button>
-                      <span className="text-white w-6 text-center text-sm">
+                      <span className="text-white w-5 text-center text-sm">
                         {item.quantity}
                       </span>
                       <button
                         onClick={() =>
-                          updateQuantity(
-                            item.menuItem.id,
-                            item.quantity + 1
-                          )
+                          updateQuantity(item.menuItem.id, item.quantity + 1)
                         }
                         className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
                       >
@@ -87,8 +88,8 @@ export default function Cart() {
           )}
         </div>
 
-        {/* Cart Footer */}
-        <div className="border-t border-gray-700 p-4 space-y-2">
+        {/* Cart Footer - always pinned at bottom, never hidden */}
+        <div className="flex-shrink-0 border-t border-gray-700 p-4 space-y-2 bg-gray-800">
           <div className="flex justify-between text-sm text-gray-400">
             <span>Subtotal</span>
             <span>£{subtotal().toFixed(2)}</span>
@@ -110,7 +111,7 @@ export default function Cart() {
                 : 'bg-gray-700 text-gray-500 cursor-not-allowed'
             }`}
           >
-            Pay £{total().toFixed(2)}
+            {items.length > 0 ? `Pay £${total().toFixed(2)}` : 'Add items to order'}
           </button>
         </div>
       </div>

@@ -1,96 +1,105 @@
 import { useState } from 'react'
+import { useAuthStore } from '../stores/authStore'
+import { getStoredApiUrl, setApiUrl } from '../services/api'
 
-interface LoginPageProps {
-  onLogin: () => void
-}
+export default function LoginPage() {
+  const { login, isLoading, error } = useAuthStore()
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
+  const [apiUrlInput, setApiUrlInput] = useState(getStoredApiUrl())
 
-const DEMO_PIN = '1234'
-
-export default function LoginPage({ onLogin }: LoginPageProps) {
-  const [pin, setPin] = useState('')
-  const [error, setError] = useState('')
-
-  const handleDigit = (digit: string) => {
-    if (pin.length < 4) {
-      const newPin = pin + digit
-      setPin(newPin)
-      setError('')
-      if (newPin.length === 4) {
-        if (newPin === DEMO_PIN) {
-          onLogin()
-        } else {
-          setError('Invalid PIN')
-          setTimeout(() => {
-            setPin('')
-            setError('')
-          }, 1000)
-        }
-      }
-    }
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!username || !password) return
+    await login(username, password)
   }
 
-  const handleClear = () => {
-    setPin('')
-    setError('')
+  const handleSaveApiUrl = () => {
+    const url = apiUrlInput.replace(/\/+$/, '')
+    setApiUrl(url)
+    setShowSettings(false)
   }
 
   return (
     <div className="h-screen flex items-center justify-center bg-gray-900">
-      <div className="bg-gray-800 rounded-2xl p-8 w-80 shadow-2xl">
-        <h1 className="text-2xl font-bold text-center text-white mb-2">
-          Restaurant POS
-        </h1>
-        <p className="text-gray-400 text-center text-sm mb-6">
-          Enter PIN to start
-        </p>
-
-        {/* PIN dots */}
-        <div className="flex justify-center gap-3 mb-6">
-          {[0, 1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className={`w-4 h-4 rounded-full border-2 transition-all ${
-                i < pin.length
-                  ? error
-                    ? 'bg-red-500 border-red-500'
-                    : 'bg-orange-500 border-orange-500'
-                  : 'border-gray-500'
-              }`}
-            />
-          ))}
+      <div className="bg-gray-800 rounded-2xl p-8 w-96 shadow-2xl">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-3">
+            <span className="text-3xl">🍽️</span>
+          </div>
+          <h1 className="text-2xl font-bold text-white">Restaurant POS</h1>
+          <p className="text-gray-400 text-sm mt-1">Sign in with your staff account</p>
         </div>
 
-        {error && (
-          <p className="text-red-400 text-center text-sm mb-4">{error}</p>
-        )}
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="text-gray-400 text-sm block mb-1">Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors"
+              placeholder="Enter username"
+              autoFocus
+              disabled={isLoading}
+            />
+          </div>
 
-        {/* Number pad */}
-        <div className="grid grid-cols-3 gap-3">
-          {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'C'].map(
-            (key) => {
-              if (key === '') return <div key="empty" />
-              return (
-                <button
-                  key={key}
-                  onClick={() =>
-                    key === 'C' ? handleClear() : handleDigit(key)
-                  }
-                  className={`h-14 rounded-xl text-xl font-semibold transition-all active:scale-95 ${
-                    key === 'C'
-                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                      : 'bg-gray-700 text-white hover:bg-gray-600'
-                  }`}
-                >
-                  {key}
-                </button>
-              )
-            }
+          <div>
+            <label className="text-gray-400 text-sm block mb-1">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors"
+              placeholder="Enter password"
+              disabled={isLoading}
+            />
+          </div>
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+              <p className="text-red-400 text-sm text-center">{error}</p>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isLoading || !username || !password}
+            className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-xl font-bold text-lg transition-all active:scale-[0.98]"
+          >
+            {isLoading ? 'Signing in...' : 'Sign In'}
+          </button>
+        </form>
+
+        <div className="mt-4 pt-4 border-t border-gray-700">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="text-gray-500 hover:text-gray-300 text-xs w-full text-center transition-colors"
+          >
+            {showSettings ? 'Hide' : 'Server Settings'}
+          </button>
+
+          {showSettings && (
+            <div className="mt-3 space-y-2">
+              <label className="text-gray-400 text-xs block">API Server URL</label>
+              <input
+                type="text"
+                value={apiUrlInput}
+                onChange={(e) => setApiUrlInput(e.target.value)}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500"
+                placeholder="http://localhost:8000"
+              />
+              <button
+                onClick={handleSaveApiUrl}
+                className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition-colors"
+              >
+                Save
+              </button>
+            </div>
           )}
         </div>
-
-        <p className="text-gray-500 text-xs text-center mt-4">
-          Demo PIN: 1234
-        </p>
       </div>
     </div>
   )
