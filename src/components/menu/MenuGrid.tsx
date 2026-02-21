@@ -3,21 +3,31 @@ import { useCartStore } from '../../stores/cartStore'
 import { useAuthStore } from '../../stores/authStore'
 import { fetchMenuItems, mapBackendCategory, getCategoryIcon } from '../../services/menuService'
 import type { MenuItem } from '../../types'
+import type { BackendMenuItem } from '../../services/menuService'
 
 const DEMO_MENU: MenuItem[] = [
-  { id: '1', name: 'Fish & Chips', price: 12.99, category: 'Mains', icon: '🐟', available: true },
-  { id: '2', name: 'Burger', price: 10.99, category: 'Mains', icon: '🍔', available: true },
-  { id: '3', name: 'Pizza', price: 11.99, category: 'Mains', icon: '🍕', available: true },
-  { id: '4', name: 'Chicken Wings', price: 7.99, category: 'Starters', icon: '🍗', available: true },
-  { id: '5', name: 'Garlic Bread', price: 4.99, category: 'Starters', icon: '🍞', available: true },
-  { id: '6', name: 'Soup', price: 5.99, category: 'Starters', icon: '🍜', available: true },
-  { id: '7', name: 'Chips', price: 3.99, category: 'Sides', icon: '🍟', available: true },
-  { id: '8', name: 'Coleslaw', price: 2.99, category: 'Sides', icon: '🥗', available: true },
-  { id: '9', name: 'Cola', price: 2.50, category: 'Drinks', icon: '🥤', available: true },
-  { id: '10', name: 'Beer', price: 4.99, category: 'Drinks', icon: '🍺', available: true },
-  { id: '11', name: 'Ice Cream', price: 4.99, category: 'Desserts', icon: '🍦', available: true },
-  { id: '12', name: 'Cake', price: 5.99, category: 'Desserts', icon: '🍰', available: true },
+  { id: '1', name: 'Fish & Chips', price: 12.99, category: 'Mains', icon: '\U0001f41f', available: true },
+  { id: '2', name: 'Burger', price: 10.99, category: 'Mains', icon: '\U0001f354', available: true },
+  { id: '3', name: 'Pizza', price: 11.99, category: 'Mains', icon: '\U0001f355', available: true },
+  { id: '4', name: 'Chicken Wings', price: 7.99, category: 'Starters', icon: '\U0001f357', available: true },
+  { id: '5', name: 'Garlic Bread', price: 4.99, category: 'Starters', icon: '\U0001f35e', available: true },
+  { id: '6', name: 'Chips', price: 3.99, category: 'Sides', icon: '\U0001f35f', available: true },
+  { id: '7', name: 'Cola', price: 2.50, category: 'Drinks', icon: '\U0001f964', available: true },
+  { id: '8', name: 'Beer', price: 4.99, category: 'Drinks', icon: '\U0001f37a', available: true },
+  { id: '9', name: 'Ice Cream', price: 4.99, category: 'Desserts', icon: '\U0001f366', available: true },
+  { id: '10', name: 'Cake', price: 5.99, category: 'Desserts', icon: '\U0001f370', available: true },
 ]
+
+function mapBackendToMenuItem(item: BackendMenuItem): MenuItem {
+  return {
+    id: item.id,
+    name: item.name,
+    price: item.price,
+    category: mapBackendCategory(item.category),
+    icon: getCategoryIcon(item.category),
+    available: item.is_available,
+  }
+}
 
 interface MenuGridProps {
   category: string
@@ -26,75 +36,54 @@ interface MenuGridProps {
 
 export default function MenuGrid({ category, onCategoriesLoaded }: MenuGridProps) {
   const addItem = useCartStore((s) => s.addItem)
-  const { user } = useAuthStore()
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isOffline, setIsOffline] = useState(false)
+  const user = useAuthStore((s) => s.user)
   const [animatingId, setAnimatingId] = useState<string | null>(null)
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(DEMO_MENU)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
 
   useEffect(() => {
-    loadMenu()
-  }, [user?.restaurant_id])
-
-  const loadMenu = async () => {
-    const restaurantId = user?.restaurant_id
-    if (!restaurantId) {
-      // No restaurant linked - use demo data
-      setMenuItems(DEMO_MENU)
-      setIsOffline(false)
-      setIsLoading(false)
-      const cats = ['All', ...Array.from(new Set(DEMO_MENU.map((i) => i.category)))]
-      onCategoriesLoaded?.(cats)
-      return
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
     }
+  }, [])
 
-    setIsLoading(true)
-    try {
-      const items = await fetchMenuItems(restaurantId)
-      const mapped: MenuItem[] = items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        category: mapBackendCategory(item.category),
-        icon: item.image_url ? '' : getCategoryIcon(item.category),
-        imageUrl: item.image_url || undefined,
-        available: item.is_available,
-      }))
-      setMenuItems(mapped)
-      setIsOffline(false)
+  useEffect(() => {
+    const loadMenu = async () => {
+      const restaurantId = user?.restaurant_id || localStorage.getItem('pos_restaurant_id')
+      if (!restaurantId || !isOnline) return
 
-      // Extract unique categories and notify parent
-      const cats = ['All', ...Array.from(new Set(mapped.map((i) => i.category)))]
-      onCategoriesLoaded?.(cats)
-
-      // Cache to localStorage for offline use
-      localStorage.setItem(`menu_${restaurantId}`, JSON.stringify(mapped))
-      localStorage.setItem(`menu_${restaurantId}_cats`, JSON.stringify(cats))
-    } catch {
-      // Try offline cache
-      const cached = localStorage.getItem(`menu_${user.restaurant_id}`)
-      if (cached) {
-        const items = JSON.parse(cached) as MenuItem[]
-        setMenuItems(items)
-        setIsOffline(true)
-        const cachedCats = localStorage.getItem(`menu_${user.restaurant_id}_cats`)
-        if (cachedCats) onCategoriesLoaded?.(JSON.parse(cachedCats))
-      } else {
-        // No cache - fall back to demo
-        setMenuItems(DEMO_MENU)
-        setIsOffline(true)
-        const cats = ['All', ...Array.from(new Set(DEMO_MENU.map((i) => i.category)))]
-        onCategoriesLoaded?.(cats)
+      setIsLoading(true)
+      try {
+        const items = await fetchMenuItems(restaurantId)
+        const mapped = items.map(mapBackendToMenuItem)
+        if (mapped.length > 0) {
+          setMenuItems(mapped)
+          localStorage.setItem('pos_cached_menu', JSON.stringify(mapped))
+          const cats = new Set(mapped.map((m) => m.category))
+          onCategoriesLoaded?.(['All', ...Array.from(cats)])
+        }
+      } catch (err) {
+        console.error('Failed to fetch menu, using cached/demo:', err)
+        const cached = localStorage.getItem('pos_cached_menu')
+        if (cached) {
+          try { setMenuItems(JSON.parse(cached)) } catch { /* use demo */ }
+        }
+      } finally {
+        setIsLoading(false)
       }
-    } finally {
-      setIsLoading(false)
     }
-  }
+    loadMenu()
+  }, [user?.restaurant_id, isOnline, onCategoriesLoaded])
 
-  const filteredMenu =
-    category === 'All'
-      ? menuItems
-      : menuItems.filter((item) => item.category === category)
+  const filteredMenu = category === 'All'
+    ? menuItems
+    : menuItems.filter((item) => item.category === category)
 
   const handleItemClick = (item: MenuItem) => {
     addItem(item)
@@ -105,9 +94,9 @@ export default function MenuGrid({ category, onCategoriesLoaded }: MenuGridProps
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-center text-gray-400">
-          <div className="text-4xl mb-3 animate-spin">⟳</div>
-          <p>Loading menu...</p>
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full mx-auto mb-3" />
+          <p className="text-gray-400">Loading menu...</p>
         </div>
       </div>
     )
@@ -115,15 +104,6 @@ export default function MenuGrid({ category, onCategoriesLoaded }: MenuGridProps
 
   return (
     <div className="flex-1 overflow-y-auto p-4">
-      {isOffline && (
-        <div className="mb-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-2 text-yellow-400 text-sm flex items-center gap-2">
-          <span>⚠️</span>
-          <span>Offline – showing cached menu</span>
-          <button onClick={loadMenu} className="ml-auto text-yellow-300 hover:text-yellow-100 underline text-xs">
-            Retry
-          </button>
-        </div>
-      )}
       <div className="grid grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
         {filteredMenu.map((item) => (
           <button
@@ -133,32 +113,15 @@ export default function MenuGrid({ category, onCategoriesLoaded }: MenuGridProps
               animatingId === item.id ? 'menu-item-pop menu-item-glow' : ''
             }`}
           >
-            {item.imageUrl ? (
-              <img
-                src={item.imageUrl}
-                alt={item.name}
-                className="w-16 h-16 object-cover rounded-lg mb-2"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none'
-                }}
-              />
-            ) : (
-              <span className="text-5xl mb-3">{item.icon}</span>
-            )}
-            <span className="text-sm font-medium text-white text-center leading-tight line-clamp-2">
+            <span className="text-5xl mb-3">{item.icon}</span>
+            <span className="text-sm font-medium text-white text-center leading-tight">
               {item.name}
             </span>
             <span className="text-orange-400 font-bold text-sm mt-1">
-              £{item.price.toFixed(2)}
+              {'\u00a3'}{item.price.toFixed(2)}
             </span>
           </button>
         ))}
-        {filteredMenu.length === 0 && (
-          <div className="col-span-full flex flex-col items-center justify-center py-16 text-gray-500">
-            <span className="text-4xl mb-2">🍽️</span>
-            <p>No items in this category</p>
-          </div>
-        )}
       </div>
     </div>
   )

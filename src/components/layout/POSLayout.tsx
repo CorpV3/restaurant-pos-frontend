@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import MenuGrid from '../menu/MenuGrid'
 import Cart from '../cart/Cart'
 import CategoryBar from '../menu/CategoryBar'
@@ -8,23 +8,29 @@ interface POSLayoutProps {
   onLogout: () => void
 }
 
-const DEFAULT_CATEGORIES = ['All', 'Starters', 'Mains', 'Sides', 'Drinks', 'Desserts']
+const DEFAULT_CATEGORIES = [
+  'All',
+  'Starters',
+  'Mains',
+  'Sides',
+  'Drinks',
+  'Desserts',
+]
 
 export default function POSLayout({ onLogout }: POSLayoutProps) {
   const [activeCategory, setActiveCategory] = useState('All')
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
 
-  const handleCategoriesLoaded = (cats: string[]) => {
+  const handleCategoriesLoaded = useCallback((cats: string[]) => {
     setCategories(cats)
-    setActiveCategory('All')
-  }
+  }, [])
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900 overflow-hidden">
+    <div className="h-screen flex flex-col bg-gray-900">
       <StatusBar onLogout={onLogout} />
-      <div className="flex flex-1 min-h-0">
-        {/* Left: Menu Area */}
-        <div className="flex-1 flex flex-col min-h-0 min-w-0">
+
+      <div className="flex flex-1 overflow-hidden">
+        <div className="flex-1 flex flex-col">
           <CategoryBar
             categories={categories}
             active={activeCategory}
@@ -35,7 +41,7 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
             onCategoriesLoaded={handleCategoriesLoaded}
           />
         </div>
-        {/* Right: Cart - fixed width, full height, scrollable internally */}
+
         <Cart />
       </div>
     </div>

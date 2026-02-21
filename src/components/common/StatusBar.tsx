@@ -6,7 +6,7 @@ interface StatusBarProps {
 }
 
 export default function StatusBar({ onLogout }: StatusBarProps) {
-  const { user } = useAuthStore()
+  const user = useAuthStore((s) => s.user)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [time, setTime] = useState(new Date())
 
@@ -27,23 +27,19 @@ export default function StatusBar({ onLogout }: StatusBarProps) {
   }, [])
 
   return (
-    <div className="h-12 flex-shrink-0 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-4">
+    <div className="h-12 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-4">
       <div className="flex items-center gap-3">
         <span className="text-orange-500 font-bold text-lg">POS</span>
         {user && (
           <span className="text-gray-300 text-sm">
             {user.full_name || user.username}
-            {user.role && (
-              <span className="ml-1 text-xs text-gray-500 capitalize">
-                ({user.role.replace('_', ' ')})
-              </span>
-            )}
+            <span className="text-gray-500 ml-1">({user.role})</span>
           </span>
         )}
       </div>
 
       <div className="flex items-center gap-4">
-        <span className="text-gray-300 text-sm font-mono">
+        <span className="text-gray-300 text-sm">
           {time.toLocaleTimeString('en-GB')}
         </span>
         <div className="flex items-center gap-1.5">
