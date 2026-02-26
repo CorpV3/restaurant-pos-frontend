@@ -29,10 +29,10 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
       <StatusBar onLogout={onLogout} />
 
       {/* Tab bar */}
-      <div className="flex-shrink-0 flex bg-gray-800 border-b border-gray-700 px-4 gap-1">
+      <div className="flex-shrink-0 flex bg-gray-800 border-b border-gray-700 px-3 gap-1">
         <button
           onClick={() => setActiveTab('pos')}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+          className={`px-4 py-1.5 text-xs font-medium border-b-2 transition-colors ${
             activeTab === 'pos'
               ? 'border-orange-500 text-orange-400'
               : 'border-transparent text-gray-400 hover:text-white'
@@ -42,7 +42,7 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
         </button>
         <button
           onClick={() => setActiveTab('receipts')}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors relative ${
+          className={`px-4 py-1.5 text-xs font-medium border-b-2 transition-colors relative ${
             activeTab === 'receipts'
               ? 'border-orange-500 text-orange-400'
               : 'border-transparent text-gray-400 hover:text-white'
@@ -50,14 +50,14 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
         >
           🧾 Receipts
           {pendingCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">
+            <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs font-bold min-w-[16px] h-[16px] rounded-full flex items-center justify-center px-1">
               {pendingCount}
             </span>
           )}
         </button>
         <button
           onClick={() => setActiveTab('reports')}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+          className={`px-4 py-1.5 text-xs font-medium border-b-2 transition-colors ${
             activeTab === 'reports'
               ? 'border-orange-500 text-orange-400'
               : 'border-transparent text-gray-400 hover:text-white'
