@@ -136,8 +136,8 @@ export default function Cart() {
           )}
         </div>
 
-        {/* Footer — always visible */}
-        <div className="flex-shrink-0 border-t border-gray-700 px-4 pt-3 pb-4 space-y-2 bg-gray-800">
+        {/* Totals summary */}
+        <div className="flex-shrink-0 border-t border-gray-700 px-4 pt-3 pb-2 space-y-1 bg-gray-800">
           <div className="flex justify-between text-sm text-gray-400">
             <span>Subtotal</span>
             <span>{currencySymbol}{subtotal().toFixed(2)}</span>
@@ -146,14 +146,18 @@ export default function Cart() {
             <span>VAT (20%)</span>
             <span>{currencySymbol}{vat().toFixed(2)}</span>
           </div>
-          <div className="flex justify-between text-lg font-bold text-white border-t border-gray-600 pt-2">
+          <div className="flex justify-between text-base font-bold text-white border-t border-gray-600 pt-2">
             <span>Total</span>
             <span className="text-orange-400">{currencySymbol}{total().toFixed(2)}</span>
           </div>
+        </div>
+
+        {/* Pay button — own row, always visible */}
+        <div className="flex-shrink-0 px-4 pb-4 pt-2 bg-gray-800">
           <button
             onClick={() => setShowPayment(true)}
             disabled={items.length === 0}
-            className={`w-full py-3 rounded-xl text-lg font-bold transition-all ${
+            className={`w-full py-3 rounded-xl text-base font-bold transition-all ${
               items.length > 0
                 ? 'bg-orange-500 hover:bg-orange-600 text-white active:scale-[0.98]'
                 : 'bg-gray-700 text-gray-500 cursor-not-allowed'

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '../../stores/authStore'
 
+const APP_VERSION = 'v1.0.1'
+
 const ROLE_LABELS: Record<string, string> = {
   master_admin: 'Master Admin',
   restaurant_admin: 'Manager',
@@ -56,6 +58,9 @@ export default function StatusBar({ onLogout }: StatusBarProps) {
             </span>
           </span>
         )}
+        <span className="text-xs text-gray-600 bg-gray-700 px-2 py-0.5 rounded font-mono">
+          {APP_VERSION}
+        </span>
       </div>
 
       <div className="flex items-center gap-4 flex-shrink-0">
