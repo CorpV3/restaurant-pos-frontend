@@ -25,7 +25,7 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
   }, [])
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900 overflow-hidden">
+    <div className="h-screen h-[100dvh] flex flex-col bg-gray-900 overflow-hidden">
       <StatusBar onLogout={onLogout} />
 
       {/* Tab bar */}

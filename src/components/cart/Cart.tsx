@@ -25,8 +25,7 @@ export default function Cart() {
 
   return (
     <>
-      {/* h-full fills the flex parent without overflowing */}
-      <div className="w-96 flex-shrink-0 bg-gray-800 border-l border-gray-700 flex flex-col h-full overflow-hidden">
+      <div className="w-96 flex-shrink-0 bg-gray-800 border-l border-gray-700 flex flex-col min-h-0">
 
         {/* Header */}
         <div className="flex-shrink-0 p-4 border-b border-gray-700">
@@ -138,7 +137,7 @@ export default function Cart() {
         </div>
 
         {/* Footer — always visible */}
-        <div className="flex-shrink-0 border-t border-gray-700 p-4 space-y-2 bg-gray-800">
+        <div className="flex-shrink-0 border-t border-gray-700 px-4 pt-3 pb-4 space-y-2 bg-gray-800">
           <div className="flex justify-between text-sm text-gray-400">
             <span>Subtotal</span>
             <span>{currencySymbol}{subtotal().toFixed(2)}</span>
