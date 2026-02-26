@@ -25,13 +25,13 @@ export default function Cart() {
 
   return (
     <>
-      <div className="w-96 flex-shrink-0 bg-gray-800 border-l border-gray-700 flex flex-col min-h-0">
+      <div className="w-80 xl:w-96 flex-shrink-0 bg-gray-800 border-l border-gray-700 flex flex-col" style={{ height: '100%' }}>
 
-        {/* Header */}
+        {/* Fixed header: title + table selector */}
         <div className="flex-shrink-0 p-4 border-b border-gray-700">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-white">
-              Current Order{' '}
+              Order{' '}
               {items.length > 0 && (
                 <span className="text-sm text-orange-400 font-normal">
                   ({items.reduce((s, i) => s + i.quantity, 0)} items)
@@ -93,67 +93,72 @@ export default function Cart() {
           )}
         </div>
 
-        {/* Items — scrollable */}
-        <div className="flex-1 overflow-y-auto p-3 min-h-0">
-          {items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-500">
-              <span className="text-4xl mb-2">🛒</span>
-              <p>No items yet</p>
-              <p className="text-sm">Tap menu items to add</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {items.map((item) => (
-                <div key={item.menuItem.id} className="bg-gray-700 rounded-lg p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-medium truncate">
-                        {item.menuItem.icon} {item.menuItem.name}
-                      </p>
-                      <p className="text-orange-400 text-sm">
-                        {currencySymbol}{(item.menuItem.price * item.quantity).toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => updateQuantity(item.menuItem.id, item.quantity - 1)}
-                        className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
-                      >-</button>
-                      <span className="text-white w-5 text-center text-sm">{item.quantity}</span>
-                      <button
-                        onClick={() => updateQuantity(item.menuItem.id, item.quantity + 1)}
-                        className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
-                      >+</button>
-                      <button
-                        onClick={() => removeItem(item.menuItem.id)}
-                        className="w-7 h-7 rounded bg-red-600/30 text-red-400 flex items-center justify-center hover:bg-red-600/50 ml-1"
-                      >×</button>
+        {/* Scrollable middle: items list + totals summary */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {/* Items */}
+          <div className="p-3">
+            {items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                <span className="text-4xl mb-2">🛒</span>
+                <p>No items yet</p>
+                <p className="text-sm">Tap menu items to add</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {items.map((item) => (
+                  <div key={item.menuItem.id} className="bg-gray-700 rounded-lg p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium truncate">
+                          {item.menuItem.icon} {item.menuItem.name}
+                        </p>
+                        <p className="text-orange-400 text-sm">
+                          {currencySymbol}{(item.menuItem.price * item.quantity).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => updateQuantity(item.menuItem.id, item.quantity - 1)}
+                          className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
+                        >-</button>
+                        <span className="text-white w-5 text-center text-sm">{item.quantity}</span>
+                        <button
+                          onClick={() => updateQuantity(item.menuItem.id, item.quantity + 1)}
+                          className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
+                        >+</button>
+                        <button
+                          onClick={() => removeItem(item.menuItem.id)}
+                          className="w-7 h-7 rounded bg-red-600/30 text-red-400 flex items-center justify-center hover:bg-red-600/50 ml-1"
+                        >×</button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Totals — inside scroll area, below items */}
+          {items.length > 0 && (
+            <div className="px-4 pt-2 pb-3 border-t border-gray-700 space-y-1">
+              <div className="flex justify-between text-sm text-gray-400">
+                <span>Subtotal</span>
+                <span>{currencySymbol}{subtotal().toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-400">
+                <span>VAT (20%)</span>
+                <span>{currencySymbol}{vat().toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-base font-bold text-white border-t border-gray-600 pt-2">
+                <span>Total</span>
+                <span className="text-orange-400">{currencySymbol}{total().toFixed(2)}</span>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Totals summary */}
-        <div className="flex-shrink-0 border-t border-gray-700 px-4 pt-3 pb-2 space-y-1 bg-gray-800">
-          <div className="flex justify-between text-sm text-gray-400">
-            <span>Subtotal</span>
-            <span>{currencySymbol}{subtotal().toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-sm text-gray-400">
-            <span>VAT (20%)</span>
-            <span>{currencySymbol}{vat().toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-base font-bold text-white border-t border-gray-600 pt-2">
-            <span>Total</span>
-            <span className="text-orange-400">{currencySymbol}{total().toFixed(2)}</span>
-          </div>
-        </div>
-
-        {/* Pay button — own row, always visible */}
-        <div className="flex-shrink-0 px-4 pb-4 pt-2 bg-gray-800">
+        {/* Pay button — pinned at bottom, always visible */}
+        <div className="flex-shrink-0 px-4 py-3 border-t border-gray-700 bg-gray-800">
           <button
             onClick={() => setShowPayment(true)}
             disabled={items.length === 0}

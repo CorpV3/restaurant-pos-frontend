@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '../../stores/authStore'
 
-const APP_VERSION = 'v1.0.1'
+const APP_VERSION = 'v1.0.2'
 
 const ROLE_LABELS: Record<string, string> = {
   master_admin: 'Master Admin',
@@ -36,15 +36,18 @@ export default function StatusBar({ onLogout }: StatusBarProps) {
   return (
     <div className="h-12 flex-shrink-0 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-4">
       <div className="flex items-center gap-3 min-w-0">
-        {/* Restaurant name */}
+        {/* Restaurant name + version */}
         {restaurant && (
           <>
             <div
               className="w-3 h-3 rounded-full flex-shrink-0"
               style={{ backgroundColor: restaurant.theme_color || '#f97316' }}
             />
-            <span className="text-white font-semibold text-sm truncate max-w-[200px]">
+            <span className="text-white font-semibold text-sm truncate max-w-[160px]">
               {restaurant.name}
+            </span>
+            <span className="text-xs text-gray-500 bg-gray-700 px-2 py-0.5 rounded font-mono flex-shrink-0">
+              {APP_VERSION}
             </span>
             <span className="text-gray-600">|</span>
           </>
@@ -58,9 +61,6 @@ export default function StatusBar({ onLogout }: StatusBarProps) {
             </span>
           </span>
         )}
-        <span className="text-xs text-gray-600 bg-gray-700 px-2 py-0.5 rounded font-mono">
-          {APP_VERSION}
-        </span>
       </div>
 
       <div className="flex items-center gap-4 flex-shrink-0">
