@@ -25,21 +25,21 @@ export default function Cart() {
 
   return (
     <>
-      <div className="w-72 xl:w-80 flex-shrink-0 bg-gray-800 border-l border-gray-700 flex flex-col overflow-hidden">
+      <div className="w-96 flex-shrink-0 bg-gray-800 border-l border-gray-700 flex flex-col min-h-0">
 
-        {/* Fixed header: title + table selector */}
-        <div className="flex-shrink-0 px-3 py-2 border-b border-gray-700">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-bold text-white">
-              Order{' '}
+        {/* Header */}
+        <div className="flex-shrink-0 p-4 border-b border-gray-700">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold text-white">
+              Current Order{' '}
               {items.length > 0 && (
-                <span className="text-xs text-orange-400 font-normal">
+                <span className="text-sm text-orange-400 font-normal">
                   ({items.reduce((s, i) => s + i.quantity, 0)} items)
                 </span>
               )}
             </h2>
             {items.length > 0 && (
-              <button onClick={clearCart} className="text-red-400 hover:text-red-300 text-xs">
+              <button onClick={clearCart} className="text-red-400 hover:text-red-300 text-sm">
                 Clear
               </button>
             )}
@@ -50,28 +50,28 @@ export default function Cart() {
             <div>
               <button
                 onClick={() => setShowTablePicker((v) => !v)}
-                className={`w-full text-left px-2 py-1.5 rounded-lg text-xs border transition-colors ${
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm border transition-colors ${
                   selectedTable
                     ? 'bg-orange-500/20 border-orange-500 text-orange-300'
                     : 'bg-gray-700 border-gray-600 text-gray-400 hover:border-gray-500'
                 }`}
               >
-                <span className="text-xs uppercase tracking-wide text-gray-500 block leading-none mb-0.5">Table</span>
-                <span className="font-medium text-xs">
+                <span className="text-xs uppercase tracking-wide text-gray-500 block">Table</span>
+                <span className="font-medium">
                   {selectedTable ? `Table ${selectedTable.table_number}` : 'Tap to select table'}
                 </span>
               </button>
 
               {showTablePicker && (
-                <div className="mt-1 p-1.5 bg-gray-700 rounded-lg border border-gray-600">
-                  <div className="grid grid-cols-5 gap-1 mb-1">
+                <div className="mt-2 p-2 bg-gray-700 rounded-lg border border-gray-600">
+                  <div className="grid grid-cols-5 gap-1 mb-2">
                     {tables
                       .sort((a, b) => a.table_number - b.table_number)
                       .map((t) => (
                         <button
                           key={t.id}
                           onClick={() => { setSelectedTable(t); setShowTablePicker(false) }}
-                          className={`py-1.5 rounded text-xs font-bold transition-colors ${
+                          className={`py-2 rounded text-xs font-bold transition-colors ${
                             selectedTable?.id === t.id
                               ? 'bg-orange-500 text-white'
                               : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
@@ -83,7 +83,7 @@ export default function Cart() {
                   </div>
                   <button
                     onClick={() => { setSelectedTable(null); setShowTablePicker(false) }}
-                    className="w-full py-1 rounded text-xs bg-gray-600 text-gray-300 hover:bg-gray-500"
+                    className="w-full py-1.5 rounded text-xs bg-gray-600 text-gray-300 hover:bg-gray-500"
                   >
                     Takeaway / Counter
                   </button>
@@ -93,76 +93,71 @@ export default function Cart() {
           )}
         </div>
 
-        {/* Scrollable middle: items list + totals summary */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          {/* Items */}
-          <div className="p-2">
-            {items.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-                <span className="text-3xl mb-1">🛒</span>
-                <p className="text-xs">No items yet</p>
-                <p className="text-xs">Tap menu items to add</p>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                {items.map((item) => (
-                  <div key={item.menuItem.id} className="bg-gray-700 rounded-lg px-2.5 py-2">
-                    <div className="flex items-center justify-between gap-1.5">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white text-xs font-medium truncate">
-                          {item.menuItem.icon} {item.menuItem.name}
-                        </p>
-                        <p className="text-orange-400 text-xs">
-                          {currencySymbol}{(item.menuItem.price * item.quantity).toFixed(2)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-0.5 flex-shrink-0">
-                        <button
-                          onClick={() => updateQuantity(item.menuItem.id, item.quantity - 1)}
-                          className="w-6 h-6 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500 text-xs"
-                        >-</button>
-                        <span className="text-white w-5 text-center text-xs">{item.quantity}</span>
-                        <button
-                          onClick={() => updateQuantity(item.menuItem.id, item.quantity + 1)}
-                          className="w-6 h-6 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500 text-xs"
-                        >+</button>
-                        <button
-                          onClick={() => removeItem(item.menuItem.id)}
-                          className="w-6 h-6 rounded bg-red-600/30 text-red-400 flex items-center justify-center hover:bg-red-600/50 ml-0.5 text-xs"
-                        >×</button>
-                      </div>
+        {/* Items — scrollable */}
+        <div className="flex-1 overflow-y-auto p-3 min-h-0">
+          {items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500">
+              <span className="text-4xl mb-2">🛒</span>
+              <p>No items yet</p>
+              <p className="text-sm">Tap menu items to add</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {items.map((item) => (
+                <div key={item.menuItem.id} className="bg-gray-700 rounded-lg p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-medium truncate">
+                        {item.menuItem.icon} {item.menuItem.name}
+                      </p>
+                      <p className="text-orange-400 text-sm">
+                        {currencySymbol}{(item.menuItem.price * item.quantity).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => updateQuantity(item.menuItem.id, item.quantity - 1)}
+                        className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
+                      >-</button>
+                      <span className="text-white w-5 text-center text-sm">{item.quantity}</span>
+                      <button
+                        onClick={() => updateQuantity(item.menuItem.id, item.quantity + 1)}
+                        className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
+                      >+</button>
+                      <button
+                        onClick={() => removeItem(item.menuItem.id)}
+                        className="w-7 h-7 rounded bg-red-600/30 text-red-400 flex items-center justify-center hover:bg-red-600/50 ml-1"
+                      >×</button>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Totals — inside scroll area, below items */}
-          {items.length > 0 && (
-            <div className="px-3 pt-1.5 pb-2 border-t border-gray-700 space-y-1">
-              <div className="flex justify-between text-xs text-gray-400">
-                <span>Subtotal</span>
-                <span>{currencySymbol}{subtotal().toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-xs text-gray-400">
-                <span>VAT (20%)</span>
-                <span>{currencySymbol}{vat().toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm font-bold text-white border-t border-gray-600 pt-1.5">
-                <span>Total</span>
-                <span className="text-orange-400">{currencySymbol}{total().toFixed(2)}</span>
-              </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        {/* Pay button — pinned at bottom, always visible */}
-        <div className="flex-shrink-0 px-3 py-2 border-t border-gray-700 bg-gray-800">
+        {/* Totals */}
+        <div className="flex-shrink-0 border-t border-gray-700 px-4 pt-3 pb-2 space-y-1 bg-gray-800">
+          <div className="flex justify-between text-sm text-gray-400">
+            <span>Subtotal</span>
+            <span>{currencySymbol}{subtotal().toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-sm text-gray-400">
+            <span>VAT (20%)</span>
+            <span>{currencySymbol}{vat().toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-base font-bold text-white border-t border-gray-600 pt-2">
+            <span>Total</span>
+            <span className="text-orange-400">{currencySymbol}{total().toFixed(2)}</span>
+          </div>
+        </div>
+
+        {/* Pay button */}
+        <div className="flex-shrink-0 px-4 pb-4 pt-2 bg-gray-800">
           <button
             onClick={() => setShowPayment(true)}
             disabled={items.length === 0}
-            className={`w-full py-2.5 rounded-xl text-sm font-bold transition-all ${
+            className={`w-full py-3 rounded-xl text-base font-bold transition-all ${
               items.length > 0
                 ? 'bg-orange-500 hover:bg-orange-600 text-white active:scale-[0.98]'
                 : 'bg-gray-700 text-gray-500 cursor-not-allowed'

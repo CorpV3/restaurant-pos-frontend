@@ -26,6 +26,11 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
+  // Scale down to fit all screen sizes — pay button always visible
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow?.webContents.setZoomFactor(0.85)
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })
