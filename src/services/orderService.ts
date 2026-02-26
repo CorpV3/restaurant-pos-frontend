@@ -85,16 +85,44 @@ export interface PendingOrder {
   status: string
   total_amount: number
   table_id: string | null
-  table?: { id: string; table_number: number; status: string } | null
+  table?: { id: string; table_number: string | number; status: string } | null
   created_at: string
   items: PendingOrderItem[]
 }
 
 export async function fetchPendingOrders(restaurantId: string): Promise<PendingOrder[]> {
-  const res = await api.get(`/api/v1/restaurants/${restaurantId}/orders`, {
-    params: { status: 'served', limit: 50 },
+  // Fetch orders and tables in parallel
+  const [ordersRes, tablesRes] = await Promise.all([
+    api.get(`/api/v1/restaurants/${restaurantId}/orders`, {
+      params: { status: 'served', limit: 50 },
+    }),
+    api.get(`/api/v1/restaurants/${restaurantId}/tables`).catch(() => ({ data: [] })),
+  ])
+
+  const raw: any[] = Array.isArray(ordersRes.data) ? ordersRes.data : (ordersRes.data?.orders ?? [])
+  const tables: any[] = Array.isArray(tablesRes.data) ? tablesRes.data : (tablesRes.data?.tables ?? [])
+  const tableMap = Object.fromEntries(tables.map((t) => [t.id, t]))
+
+  return raw.map((o) => {
+    const tableData = o.table_id ? tableMap[o.table_id] : null
+    return {
+      id: o.id,
+      status: o.status,
+      total_amount: o.total_amount ?? o.total ?? 0,
+      table_id: o.table_id ?? null,
+      table: tableData
+        ? { id: tableData.id, table_number: tableData.table_number, status: tableData.status }
+        : null,
+      created_at: o.created_at,
+      items: (o.items ?? []).map((item: any) => ({
+        id: item.id,
+        menu_item_id: item.menu_item_id,
+        menu_item_name: item.menu_item_name ?? item.item_name ?? 'Unknown',
+        quantity: item.quantity,
+        unit_price: item.unit_price ?? item.item_price ?? 0,
+      })),
+    }
   })
-  return Array.isArray(res.data) ? res.data : (res.data?.orders ?? [])
 }
 
 export async function getReports(
