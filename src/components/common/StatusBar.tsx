@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '../../stores/authStore'
 
-const APP_VERSION = 'v1.0.2'
+const APP_VERSION = 'v1.0.3'
 
 const ROLE_LABELS: Record<string, string> = {
   master_admin: 'Master Admin',
