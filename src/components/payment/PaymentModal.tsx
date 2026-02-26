@@ -6,23 +6,27 @@ import { createOrder, completeOrder } from '../../services/orderService'
 interface PaymentModalProps {
   total: number
   currencySymbol: string
-  cartItems: CartItem[]
-  restaurantId: string
-  tableId: string | null
   tableName: string
   onClose: () => void
   onComplete: () => void
+  // New order from cart:
+  cartItems?: CartItem[]
+  restaurantId?: string
+  tableId?: string | null
+  // Existing order (from pending receipts):
+  existingOrderId?: string
 }
 
 export default function PaymentModal({
   total,
   currencySymbol,
-  cartItems,
-  restaurantId,
-  tableId,
   tableName,
   onClose,
   onComplete,
+  cartItems,
+  restaurantId,
+  tableId,
+  existingOrderId,
 }: PaymentModalProps) {
   const [method, setMethod] = useState<'cash' | 'card' | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -34,8 +38,12 @@ export default function PaymentModal({
     if (!method) return
     setProcessing(true)
     try {
-      const order = await createOrder(cartItems, restaurantId, tableId)
-      await completeOrder(order.id, method)
+      let orderId = existingOrderId
+      if (!orderId) {
+        const order = await createOrder(cartItems!, restaurantId!, tableId ?? null)
+        orderId = order.id
+      }
+      await completeOrder(orderId, method)
       toast.success(`Payment complete — ${tableName}`)
       onComplete()
     } catch (err: unknown) {

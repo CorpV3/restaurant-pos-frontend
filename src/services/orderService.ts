@@ -72,6 +72,31 @@ export interface ReportResponse {
   orders: ReportOrder[]
 }
 
+export interface PendingOrderItem {
+  id: string
+  menu_item_id: string
+  menu_item_name: string
+  quantity: number
+  unit_price: number
+}
+
+export interface PendingOrder {
+  id: string
+  status: string
+  total_amount: number
+  table_id: string | null
+  table?: { id: string; table_number: number; status: string } | null
+  created_at: string
+  items: PendingOrderItem[]
+}
+
+export async function fetchPendingOrders(restaurantId: string): Promise<PendingOrder[]> {
+  const res = await api.get(`/api/v1/restaurants/${restaurantId}/orders`, {
+    params: { status: 'served', limit: 50 },
+  })
+  return Array.isArray(res.data) ? res.data : (res.data?.orders ?? [])
+}
+
 export async function getReports(
   restaurantId: string,
   startDate: string,

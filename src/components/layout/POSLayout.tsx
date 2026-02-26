@@ -4,6 +4,7 @@ import Cart from '../cart/Cart'
 import CategoryBar from '../menu/CategoryBar'
 import StatusBar from '../common/StatusBar'
 import ReportsPage from '../../pages/ReportsPage'
+import PendingReceipts from '../../pages/PendingReceipts'
 
 interface POSLayoutProps {
   onLogout: () => void
@@ -11,12 +12,13 @@ interface POSLayoutProps {
 
 const DEFAULT_CATEGORIES = ['All', 'Starters', 'Mains', 'Sides', 'Drinks', 'Desserts']
 
-type Tab = 'pos' | 'reports'
+type Tab = 'pos' | 'receipts' | 'reports'
 
 export default function POSLayout({ onLogout }: POSLayoutProps) {
   const [activeTab, setActiveTab] = useState<Tab>('pos')
   const [activeCategory, setActiveCategory] = useState('All')
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
+  const [pendingCount, setPendingCount] = useState(0)
 
   const handleCategoriesLoaded = useCallback((cats: string[]) => {
     setCategories(cats)
@@ -37,6 +39,21 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
           }`}
         >
           🛒 Orders
+        </button>
+        <button
+          onClick={() => setActiveTab('receipts')}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors relative ${
+            activeTab === 'receipts'
+              ? 'border-orange-500 text-orange-400'
+              : 'border-transparent text-gray-400 hover:text-white'
+          }`}
+        >
+          🧾 Receipts
+          {pendingCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">
+              {pendingCount}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab('reports')}
@@ -65,6 +82,8 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
           </div>
           <Cart />
         </div>
+      ) : activeTab === 'receipts' ? (
+        <PendingReceipts onCountChange={setPendingCount} />
       ) : (
         <ReportsPage />
       )}
