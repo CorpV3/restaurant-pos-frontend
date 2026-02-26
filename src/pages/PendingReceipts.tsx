@@ -11,11 +11,17 @@ interface PendingReceiptsProps {
   onCountChange: (count: number) => void
 }
 
+interface CompletedReceipt {
+  order: PendingOrder
+  method: 'cash' | 'card'
+}
+
 export default function PendingReceipts({ onCountChange }: PendingReceiptsProps) {
   const { restaurant } = useAuthStore()
   const [orders, setOrders] = useState<PendingOrder[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<PendingOrder | null>(null)
+  const [completedReceipt, setCompletedReceipt] = useState<CompletedReceipt | null>(null)
 
   const currencySymbol = restaurant?.currency_symbol || '£'
 
@@ -46,6 +52,74 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
   const tableName = (order: PendingOrder) => {
     if (order.table) return `Table ${order.table.table_number}`
     return 'Takeaway'
+  }
+
+  const handlePrint = () => window.print()
+
+  // Receipt slip shown after payment collected
+  if (completedReceipt) {
+    const { order, method } = completedReceipt
+    return (
+      <div className="flex-1 flex flex-col bg-gray-900 overflow-hidden">
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm border border-green-700 shadow-2xl">
+            {/* Success header */}
+            <div className="text-center mb-5">
+              <div className="text-5xl mb-2">✅</div>
+              <h2 className="text-white text-xl font-bold">Payment Collected</h2>
+              <p className="text-gray-400 text-sm mt-1">{tableName(order)} · {format(new Date(order.created_at), 'HH:mm dd/MM/yyyy')}</p>
+            </div>
+
+            {/* Items */}
+            <div className="border-t border-gray-700 pt-4 mb-4 space-y-2">
+              {order.items.map((item) => (
+                <div key={item.id} className="flex justify-between text-sm">
+                  <span className="text-gray-300">{item.quantity}× {item.menu_item_name}</span>
+                  <span className="text-gray-400">{currencySymbol}{(item.unit_price * item.quantity).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Total + method */}
+            <div className="border-t border-gray-700 pt-3 mb-5">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400 text-sm">Payment</span>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                  method === 'cash' ? 'bg-green-900/60 text-green-400' : 'bg-blue-900/60 text-blue-400'
+                }`}>
+                  {method.toUpperCase()}
+                </span>
+              </div>
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-white font-semibold">Total</span>
+                <span className="text-orange-400 text-2xl font-bold">
+                  {currencySymbol}{order.total_amount.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={handlePrint}
+                className="flex-1 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded-xl font-medium"
+              >
+                🖨 Print
+              </button>
+              <button
+                onClick={() => {
+                  setCompletedReceipt(null)
+                  load()
+                }}
+                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-xl font-bold"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -120,7 +194,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
                   <div className="border-t border-gray-700 pt-3 flex items-center justify-between">
                     <span className="text-gray-400 text-sm">Total</span>
                     <span className="text-orange-400 text-xl font-bold">
-                      {currencySymbol}{parseFloat(order.total_amount.toString()).toFixed(2)}
+                      {currencySymbol}{order.total_amount.toFixed(2)}
                     </span>
                   </div>
 
@@ -135,14 +209,14 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
 
       {selectedOrder && (
         <PaymentModal
-          total={parseFloat(selectedOrder.total_amount.toString())}
+          total={selectedOrder.total_amount}
           currencySymbol={currencySymbol}
           tableName={tableName(selectedOrder)}
           existingOrderId={selectedOrder.id}
           onClose={() => setSelectedOrder(null)}
-          onComplete={() => {
+          onComplete={(method) => {
+            setCompletedReceipt({ order: selectedOrder, method })
             setSelectedOrder(null)
-            load()
           }}
         />
       )}

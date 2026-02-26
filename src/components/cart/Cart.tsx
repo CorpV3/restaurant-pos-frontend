@@ -174,7 +174,7 @@ export default function Cart() {
           tableId={selectedTable?.id ?? null}
           tableName={selectedTable ? `Table ${selectedTable.table_number}` : 'Takeaway'}
           onClose={() => setShowPayment(false)}
-          onComplete={() => {
+          onComplete={(_method) => {
             clearCart()
             setSelectedTable(null)
             setShowPayment(false)
