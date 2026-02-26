@@ -68,8 +68,9 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
       </div>
 
       {activeTab === 'pos' ? (
-        <div className="flex flex-1 overflow-hidden min-h-0">
-          <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="relative flex-1 min-h-0 overflow-hidden">
+          {/* Menu area — occupies full space minus cart width */}
+          <div className="absolute inset-0 right-72 xl:right-80 flex flex-col overflow-hidden">
             <CategoryBar
               categories={categories}
               active={activeCategory}
@@ -80,7 +81,10 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
               onCategoriesLoaded={handleCategoriesLoaded}
             />
           </div>
-          <Cart />
+          {/* Cart — pinned right, guaranteed full height via absolute */}
+          <div className="absolute top-0 right-0 bottom-0 w-72 xl:w-80">
+            <Cart />
+          </div>
         </div>
       ) : activeTab === 'receipts' ? (
         <PendingReceipts onCountChange={setPendingCount} />

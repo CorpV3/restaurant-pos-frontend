@@ -25,7 +25,7 @@ export default function Cart() {
 
   return (
     <>
-      <div className="w-72 xl:w-80 flex-shrink-0 bg-gray-800 border-l border-gray-700 flex flex-col" style={{ height: '100%' }}>
+      <div className="w-full h-full bg-gray-800 border-l border-gray-700 flex flex-col overflow-hidden">
 
         {/* Fixed header: title + table selector */}
         <div className="flex-shrink-0 px-3 py-2 border-b border-gray-700">
