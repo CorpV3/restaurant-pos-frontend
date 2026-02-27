@@ -25,7 +25,7 @@ export default function Cart() {
 
   return (
     <>
-      <div className="w-96 flex-shrink-0 bg-gray-800 border-l border-gray-700 flex flex-col min-h-0">
+      <div className="w-96 flex-shrink-0 bg-gray-800 border-l border-gray-700">
 
         {/* Header */}
         <div className="flex-shrink-0 p-4 border-b border-gray-700">
@@ -93,10 +93,10 @@ export default function Cart() {
           )}
         </div>
 
-        {/* Items — scrollable */}
-        <div className="flex-1 overflow-y-auto p-3 min-h-0">
+        {/* Items — fixed max height so totals+pay always visible below */}
+        <div className="max-h-[45vh] overflow-y-auto p-3">
           {items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-500">
+            <div className="flex flex-col items-center justify-center py-8 text-gray-500">
               <span className="text-4xl mb-2">🛒</span>
               <p>No items yet</p>
               <p className="text-sm">Tap menu items to add</p>
