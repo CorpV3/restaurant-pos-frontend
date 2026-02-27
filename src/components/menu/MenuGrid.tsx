@@ -5,6 +5,13 @@ import { fetchMenuItems, mapBackendCategory, getCategoryIcon } from '../../servi
 import type { MenuItem } from '../../types'
 import type { BackendMenuItem } from '../../services/menuService'
 
+function resolveImageUrl(path: string | null | undefined): string | undefined {
+  if (!path) return undefined
+  if (path.startsWith('http')) return path
+  const base = localStorage.getItem('pos_api_url') || 'http://localhost:8000'
+  return `${base}${path}`
+}
+
 const DEMO_MENU: MenuItem[] = [
   { id: '1', name: 'Fish & Chips', price: 12.99, category: 'Mains', icon: '\U0001f41f', available: true },
   { id: '2', name: 'Burger', price: 10.99, category: 'Mains', icon: '\U0001f354', available: true },
@@ -26,6 +33,7 @@ function mapBackendToMenuItem(item: BackendMenuItem): MenuItem {
     category: mapBackendCategory(item.category),
     icon: getCategoryIcon(item.category),
     available: item.is_available,
+    imageUrl: resolveImageUrl(item.image_url),
   }
 }
 
@@ -113,7 +121,23 @@ export default function MenuGrid({ category, onCategoriesLoaded }: MenuGridProps
               animatingId === item.id ? 'menu-item-pop menu-item-glow' : ''
             }`}
           >
-            <span className="text-5xl mb-3">{item.icon}</span>
+            {item.imageUrl ? (
+              <img
+                src={item.imageUrl}
+                alt={item.name}
+                className="w-16 h-16 object-cover rounded-lg mb-3"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  (e.currentTarget.nextSibling as HTMLElement).style.display = 'block';
+                }}
+              />
+            ) : null}
+            <span
+              className="text-5xl mb-3"
+              style={{ display: item.imageUrl ? 'none' : 'block' }}
+            >
+              {item.icon}
+            </span>
             <span className="text-sm font-medium text-white text-center leading-tight">
               {item.name}
             </span>
