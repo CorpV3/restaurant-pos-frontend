@@ -53,7 +53,7 @@ export interface BluetoothDevice {
 
 // ── Receipt byte builder ──────────────────────────────────────────────────────
 
-export function buildReceiptBytes(data: ReceiptData, paperWidth = 32): Uint8Array {
+export function buildReceiptBytes(data: ReceiptData, paperWidth = 42): Uint8Array {
   const sym = data.currencySymbol ?? '£';
   const W = paperWidth;
   const rows: number[][] = [];
@@ -247,7 +247,7 @@ class ThermalPrinterService {
    *
    * Desktop: always uses browser print dialog.
    */
-  async printReceipt(data: ReceiptData, paperWidth = 32): Promise<void> {
+  async printReceipt(data: ReceiptData, paperWidth = 42): Promise<void> {
     const bytes = buildReceiptBytes(data, paperWidth);
 
     if (isAndroid()) {

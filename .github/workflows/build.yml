@@ -101,38 +101,20 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      # ── Debug APK — every push to main ────────────────────────────────────
+      # ── Build debug APK — always ───────────────────────────────────────────
       - name: Build debug APK
-        if: "!startsWith(github.ref, 'refs/tags/v')"
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
-      # ── Release APK — tag pushes only, signed ─────────────────────────────
-      - name: Decode keystore
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > $GITHUB_WORKSPACE/release.keystore
-
-      - name: Build release APK (signed)
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon \
-            -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/release.keystore \
-            -Pandroid.injected.signing.store.password="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
-            -Pandroid.injected.signing.key.alias="${{ secrets.ANDROID_KEY_ALIAS }}" \
-            -Pandroid.injected.signing.key.password="${{ secrets.ANDROID_KEY_PASSWORD }}"
-
       - name: Rename APK with version tag
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          APK=$(find android -name '*-release*.apk' | head -1)
+          APK=$(find android -name '*-debug*.apk' | head -1)
           cp "$APK" "RestaurantPOS-${{ github.ref_name }}-android.apk"
 
-      - name: Upload Android debug artifact
+      - name: Upload Android debug artifact (branch)
         if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/upload-artifact@v4
         with:
@@ -140,7 +122,7 @@ jobs:
           path: android/**/*.apk
           retention-days: 14
 
-      - name: Upload Android release artifact
+      - name: Upload Android release artifact (tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:

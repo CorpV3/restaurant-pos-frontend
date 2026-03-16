@@ -74,7 +74,9 @@ export default function Cart() {
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="bg-gray-700 rounded-2xl p-5 w-full border border-green-700 shadow-xl">
             <div className="text-center mb-4">
-              <div className="text-4xl mb-1">✅</div>
+              <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center mx-auto mb-1">
+                <span className="text-white font-bold text-xl">OK</span>
+              </div>
               <h2 className="text-white text-lg font-bold">Payment Collected</h2>
               <p className="text-gray-400 text-sm">{r.tableName} · {r.date}</p>
             </div>
@@ -120,7 +122,7 @@ export default function Cart() {
                 disabled={printing}
                 className="flex-1 py-2.5 bg-gray-600 hover:bg-gray-500 text-gray-200 text-sm rounded-xl font-medium disabled:opacity-50"
               >
-                {printing ? 'Printing...' : '🖨 Print'}
+                {printing ? 'Printing...' : 'Print'}
               </button>
               <button
                 onClick={() => setCompletedReceipt(null)}

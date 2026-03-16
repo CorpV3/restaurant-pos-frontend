@@ -220,10 +220,11 @@ export default function PrinterSettings() {
           <span className="text-gray-300 text-sm">Paper width</span>
           <select
             value={paperWidth}
-            onChange={(e) => setPaperWidth(Number(e.target.value) as 32 | 48)}
+            onChange={(e) => setPaperWidth(Number(e.target.value) as 32 | 42 | 48)}
             className="bg-gray-600 text-white text-sm rounded-lg px-3 py-1 border border-gray-500"
           >
             <option value={32}>58mm (32 chars)</option>
+            <option value={42}>75mm (42 chars)</option>
             <option value={48}>80mm (48 chars)</option>
           </select>
         </label>

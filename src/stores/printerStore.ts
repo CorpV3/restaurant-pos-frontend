@@ -14,14 +14,14 @@ interface PrinterState {
   savedName: string | null
   // Auto-print after payment
   autoPrint: boolean
-  // Paper width: 58mm (32 chars) or 80mm (48 chars)
-  paperWidth: 32 | 48
+  // Paper width: 58mm (32 chars), 75mm (42 chars), or 80mm (48 chars)
+  paperWidth: 32 | 42 | 48
 
   setPrinterType: (t: PrinterType) => void
   setSerialPath: (p: string) => void
   setSavedPrinter: (device: BluetoothDevice | null) => void
   setAutoPrint: (v: boolean) => void
-  setPaperWidth: (w: 32 | 48) => void
+  setPaperWidth: (w: 32 | 42 | 48) => void
 }
 
 export const usePrinterStore = create<PrinterState>()(
@@ -32,7 +32,7 @@ export const usePrinterStore = create<PrinterState>()(
       savedAddress: null,
       savedName: null,
       autoPrint: false,
-      paperWidth: 32,
+      paperWidth: 42,
 
       setPrinterType: (t) => set({ printerType: t }),
       setSerialPath: (p) => set({ serialPath: p }),

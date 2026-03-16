@@ -89,7 +89,9 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
           <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm border border-green-700 shadow-2xl">
             {/* Success header */}
             <div className="text-center mb-5">
-              <div className="text-5xl mb-2">✅</div>
+              <div className="w-12 h-12 rounded-full bg-green-600 flex items-center justify-center mx-auto mb-2">
+                <span className="text-white font-bold text-xl">OK</span>
+              </div>
               <h2 className="text-white text-xl font-bold">Payment Collected</h2>
               <p className="text-gray-400 text-sm mt-1">{tableName(order)} · {format(new Date(order.created_at), 'HH:mm dd/MM/yyyy')}</p>
             </div>
@@ -129,7 +131,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
                 disabled={printing}
                 className="flex-1 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded-xl font-medium disabled:opacity-50"
               >
-                {printing ? 'Printing...' : '🖨 Print'}
+                {printing ? 'Printing...' : 'Print'}
               </button>
               <button
                 onClick={() => {
@@ -172,7 +174,9 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
       <div className="flex-1 overflow-y-auto p-4">
         {orders.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <span className="text-5xl mb-3">🧾</span>
+            <div className="w-14 h-14 rounded-xl bg-gray-700 flex items-center justify-center mb-3">
+              <span className="text-gray-400 text-lg font-bold">REC</span>
+            </div>
             <p className="text-lg font-medium">No pending receipts</p>
             <p className="text-sm mt-1">Auto-refreshes every 10 seconds</p>
           </div>

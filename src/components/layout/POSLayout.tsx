@@ -38,7 +38,7 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
               : 'border-transparent text-gray-400 hover:text-white'
           }`}
         >
-          🛒 Orders
+          Orders
         </button>
         <button
           onClick={() => setActiveTab('receipts')}
@@ -48,7 +48,7 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
               : 'border-transparent text-gray-400 hover:text-white'
           }`}
         >
-          🧾 Receipts
+          Receipts
           {pendingCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">
               {pendingCount}
@@ -63,7 +63,7 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
               : 'border-transparent text-gray-400 hover:text-white'
           }`}
         >
-          📊 Reports
+          Reports
         </button>
       </div>
 
