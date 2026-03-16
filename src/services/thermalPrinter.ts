@@ -129,7 +129,12 @@ function isAndroid(): boolean {
   );
 }
 
-/** cordova-plugin-bluetooth-serial attaches to window.bluetoothSerial after Capacitor sync */
+/** SerialPrinterPlugin — injected native plugin for built-in serial printers (e.g. H10-3) */
+function getSerialPlugin(): any | null {
+  return (window as any).Capacitor?.Plugins?.SerialPrinter ?? null;
+}
+
+/** cordova-plugin-bluetooth-serial — for external Bluetooth printers */
 function getBtSerial(): any | null {
   return (window as any).bluetoothSerial ?? null;
 }
@@ -142,14 +147,16 @@ function promisify<T>(fn: (ok: (v: T) => void, err: (e: any) => void) => void): 
 
 class ThermalPrinterService {
   private connectedAddress: string | null = null;
-  private _sdk: number | null = null; // cached Android SDK version
+  private _sdk: number | null = null;
+
+  /** Configurable serial port path — set by PrinterSettings when user changes it */
+  serialPath = '/dev/ttyS1';
 
   /** Android SDK level (0 on non-Android). Cached after first call. */
   async getAndroidSdk(): Promise<number> {
     if (this._sdk !== null) return this._sdk;
     if (!isAndroid()) { this._sdk = 0; return 0; }
     try {
-      // Dynamic import — avoids compile-time TS dependency on @capacitor/device
       const mod = await (Function('m', 'return import(m)'))('@capacitor/device');
       const Device = mod.Device ?? mod.default;
       const info = await Device.getInfo();
@@ -160,12 +167,24 @@ class ThermalPrinterService {
     return this._sdk as number;
   }
 
-  /**
-   * Whether Bluetooth printing is available on this device:
-   * - Desktop: always true (uses window.print())
-   * - Android 6+ (API 23+): true — cordova-plugin-bluetooth-serial supported
-   * - Android < 6: false — falls back to window.print()
-   */
+  /** Returns true if the built-in SerialPrinterPlugin is available (H10-3 and similar POS) */
+  hasSerialPlugin(): boolean {
+    return isAndroid() && getSerialPlugin() !== null;
+  }
+
+  /** Detect available serial port paths on this device */
+  async listSerialPaths(): Promise<string[]> {
+    const plugin = getSerialPlugin();
+    if (!plugin) return [];
+    try {
+      const result = await plugin.listPaths();
+      return result.paths ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Whether Bluetooth printing is available (Android 6+) */
   async isBluetoothSupported(): Promise<boolean> {
     if (!isAndroid()) return true;
     const sdk = await this.getAndroidSdk();
@@ -202,12 +221,12 @@ class ThermalPrinterService {
     }
   }
 
-  /** Disconnect from current printer */
+  /** Disconnect from current Bluetooth printer */
   async disconnect(): Promise<void> {
     const bt = getBtSerial();
     if (!bt || !this.connectedAddress) return;
     try {
-      await promisify<void>((ok) => bt.disconnect(ok, ok)); // resolve on success or failure
+      await promisify<void>((ok) => bt.disconnect(ok, ok));
       this.connectedAddress = null;
     } catch (e) {
       console.error('[Printer] disconnect error', e);
@@ -220,35 +239,57 @@ class ThermalPrinterService {
 
   /**
    * Print a receipt.
-   * Android 6+: ESC/POS bytes over Bluetooth Classic (cordova-plugin-bluetooth-serial)
-   * Android < 6 / Desktop: browser print dialog
+   *
+   * Priority order on Android:
+   *   1. SerialPrinterPlugin (built-in serial printer, e.g. H10-3)
+   *   2. Bluetooth via cordova-plugin-bluetooth-serial (external BT printer)
+   *   3. Browser print dialog (fallback)
+   *
+   * Desktop: always uses browser print dialog.
    */
   async printReceipt(data: ReceiptData, paperWidth = 32): Promise<void> {
+    const bytes = buildReceiptBytes(data, paperWidth);
+
     if (isAndroid()) {
-      const sdk = await this.getAndroidSdk();
-      if (sdk >= 23) {
-        await this.printAndroid(data, paperWidth);
-      } else {
-        this.printDesktop(data);
+      // 1. Built-in serial printer (H10-3, etc.)
+      const serialPlugin = getSerialPlugin();
+      if (serialPlugin) {
+        await this.printSerial(bytes, serialPlugin);
+        return;
       }
+      // 2. Bluetooth external printer
+      const bt = getBtSerial();
+      if (bt && this.connectedAddress) {
+        await this.printBluetooth(bytes, bt);
+        return;
+      }
+      // 3. Fallback
+      this.printDesktop(data);
     } else {
       this.printDesktop(data);
     }
   }
 
-  private async printAndroid(data: ReceiptData, paperWidth: number): Promise<void> {
-    const bt = getBtSerial();
-    if (!bt || !this.connectedAddress) {
-      throw new Error('No printer connected. Go to Settings → Printer to connect.');
+  private async printSerial(bytes: Uint8Array, plugin: any): Promise<void> {
+    // Convert bytes to base64 for the Java plugin
+    const b64 = btoa(String.fromCharCode(...bytes));
+    try {
+      await plugin.print({ path: this.serialPath, data: b64 });
+    } catch (e: any) {
+      console.error('[Printer] serial write error', e);
+      throw new Error(`Serial print failed on ${this.serialPath}: ${e?.message ?? e}`);
     }
+  }
 
-    const bytes = buildReceiptBytes(data, paperWidth);
-    // cordova-plugin-bluetooth-serial write() accepts ArrayBuffer — no base64 needed
+  private async printBluetooth(bytes: Uint8Array, bt: any): Promise<void> {
+    if (!this.connectedAddress) {
+      throw new Error('No Bluetooth printer connected. Go to Settings → Printer.');
+    }
     try {
       await promisify<void>((ok, err) => bt.write(bytes.buffer, ok, err));
     } catch (e) {
-      console.error('[Printer] write error', e);
-      throw new Error('Print failed — is the printer on and connected?');
+      console.error('[Printer] BT write error', e);
+      throw new Error('Bluetooth print failed — is the printer on and connected?');
     }
   }
 

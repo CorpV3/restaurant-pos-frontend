@@ -88,6 +88,16 @@ jobs:
             npx cap add android
           fi
 
+      - name: Inject SerialPrinter plugin
+        run: |
+          PKG="android/app/src/main/java/com/corpv3/restaurantpos"
+          # Copy plugin Java file into the app package
+          cp android-plugin/SerialPrinterPlugin.java "$PKG/"
+          # Add import line after existing BridgeActivity import
+          sed -i 's/import com.getcapacitor.BridgeActivity;/import com.getcapacitor.BridgeActivity;\nimport com.corpv3.restaurantpos.SerialPrinterPlugin;/' "$PKG/MainActivity.java"
+          # Register plugin before super.onCreate
+          sed -i 's/super.onCreate(savedInstanceState);/registerPlugin(SerialPrinterPlugin.class);\n        super.onCreate(savedInstanceState);/' "$PKG/MainActivity.java"
+
       - name: Sync Capacitor
         run: npx cap sync android
 
