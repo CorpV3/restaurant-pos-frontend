@@ -138,12 +138,13 @@ class ThermalPrinterService {
     if (this.plugin) return this.plugin;
     if (!isAndroid()) return null;
     try {
-      // @e-is/capacitor-bluetooth-serial — classic BT serial, supports write()
-      const mod = await import('@e-is/capacitor-bluetooth-serial');
+      // Bluetooth serial plugin loaded at runtime — avoids compile-time dependency
+      // Install @e-is/capacitor-bluetooth-serial when targeting Android 6+ devices
+      const mod = await (Function('m', 'return import(m)'))('@e-is/capacitor-bluetooth-serial');
       this.plugin = mod.BluetoothSerial ?? mod.default;
       return this.plugin;
     } catch {
-      console.warn('[Printer] @e-is/capacitor-bluetooth-serial not available');
+      console.warn('[Printer] Bluetooth serial plugin not available on this device');
       return null;
     }
   }
