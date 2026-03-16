@@ -8,7 +8,7 @@ interface PaymentModalProps {
   currencySymbol: string
   tableName: string
   onClose: () => void
-  onComplete: (method: 'cash' | 'card') => void
+  onComplete: (method: 'cash' | 'card', orderId: string, cashReceived?: number) => void
   // New order from cart:
   cartItems?: CartItem[]
   restaurantId?: string
@@ -45,7 +45,8 @@ export default function PaymentModal({
       }
       await completeOrder(orderId, method)
       toast.success(`Payment complete — ${tableName}`)
-      onComplete(method)
+      const cr = cashReceived ? parseFloat(cashReceived) : undefined
+      onComplete(method, orderId, cr)
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } }; message?: string })

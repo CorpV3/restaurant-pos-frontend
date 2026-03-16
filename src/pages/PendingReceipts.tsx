@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { format } from 'date-fns'
 import { useAuthStore } from '../stores/authStore'
+import { usePrinterStore } from '../stores/printerStore'
+import { thermalPrinter } from '../services/thermalPrinter'
 import { fetchPendingOrders, type PendingOrder } from '../services/orderService'
 import PaymentModal from '../components/payment/PaymentModal'
 import toast from 'react-hot-toast'
@@ -18,6 +20,7 @@ interface CompletedReceipt {
 
 export default function PendingReceipts({ onCountChange }: PendingReceiptsProps) {
   const { restaurant } = useAuthStore()
+  const { paperWidth } = usePrinterStore()
   const [orders, setOrders] = useState<PendingOrder[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<PendingOrder | null>(null)
@@ -54,7 +57,28 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
     return 'Takeaway'
   }
 
-  const handlePrint = () => window.print()
+  const [printing, setPrinting] = useState(false)
+
+  const handlePrint = async () => {
+    if (!completedReceipt) return
+    const { order, method } = completedReceipt
+    setPrinting(true)
+    try {
+      await thermalPrinter.printReceipt({
+        restaurantName: restaurant?.name ?? 'Restaurant',
+        orderRef: order.id.slice(0, 8).toUpperCase(),
+        tableName: tableName(order),
+        date: format(new Date(order.created_at), 'HH:mm dd/MM/yyyy'),
+        items: order.items.map((i) => ({ name: i.menu_item_name, qty: i.quantity, price: i.unit_price })),
+        total: order.total_amount,
+        paymentMethod: method,
+        currencySymbol,
+      }, paperWidth)
+    } catch {
+      toast.error('Print failed — check printer connection')
+    }
+    setPrinting(false)
+  }
 
   // Receipt slip shown after payment collected
   if (completedReceipt) {
@@ -102,9 +126,10 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
             <div className="flex gap-3">
               <button
                 onClick={handlePrint}
-                className="flex-1 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded-xl font-medium"
+                disabled={printing}
+                className="flex-1 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded-xl font-medium disabled:opacity-50"
               >
-                🖨 Print
+                {printing ? 'Printing...' : '🖨 Print'}
               </button>
               <button
                 onClick={() => {
@@ -215,7 +240,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
           existingOrderId={selectedOrder.id}
           onClose={() => setSelectedOrder(null)}
           onComplete={(method) => {
-            setCompletedReceipt({ order: selectedOrder, method })
+            setCompletedReceipt({ order: selectedOrder!, method })
             setSelectedOrder(null)
           }}
         />
