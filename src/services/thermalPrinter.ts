@@ -15,16 +15,16 @@ const GS  = 0x1d;
 const LF  = 0x0a;
 
 export const ESCPOS = {
-  INIT:          [ESC, 0x40],
-  ALIGN_LEFT:    [ESC, 0x61, 0x00],
-  ALIGN_CENTER:  [ESC, 0x61, 0x01],
-  BOLD_ON:       [ESC, 0x45, 0x01],
-  BOLD_OFF:      [ESC, 0x45, 0x00],
-  DOUBLE_HEIGHT: [ESC, 0x21, 0x10],
-  NORMAL_SIZE:   [ESC, 0x21, 0x00],
-  CUT_PAPER:     [GS,  0x56, 0x41, 0x10],
-  FEED_LINE:     [LF],
-  FEED_3:        [ESC, 0x64, 0x03],
+  INIT:          [ESC, 0x40],           // 1B 40
+  ALIGN_LEFT:    [ESC, 0x61, 0x00],     // 1B 61 00
+  ALIGN_CENTER:  [ESC, 0x61, 0x01],     // 1B 61 01
+  BOLD_ON:       [ESC, 0x45, 0x01],     // 1B 45 01
+  BOLD_OFF:      [ESC, 0x45, 0x00],     // 1B 45 00
+  DOUBLE_HEIGHT: [GS,  0x21, 0x01],     // 1D 21 01 — double height x2
+  NORMAL_SIZE:   [GS,  0x21, 0x00],     // 1D 21 00 — normal size
+  CUT_PAPER:     [GS,  0x56, 0x00],     // 1D 56 00 — full cut
+  FEED_LINE:     [LF],                  // 0A
+  FEED_3:        [ESC, 0x64, 0x03],     // 1B 64 03 — feed 3 lines
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
