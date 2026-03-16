@@ -24,12 +24,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@capacitor/android": "^6.0.0",
-    "@capacitor/core": "^6.0.0",
+    "@capacitor/android": "^5.7.8",
+    "@capacitor/core": "^5.7.8",
     "@tanstack/react-query": "^5.8.4",
     "axios": "^1.6.2",
     "better-sqlite3": "^9.2.2",
-    "@e-is/capacitor-bluetooth-serial": "^6.0.3",
+    "@e-is/capacitor-bluetooth-serial": "^5.0.1",
     "clsx": "^2.0.0",
     "date-fns": "^2.30.0",
     "electron-store": "^8.1.0",
@@ -45,7 +45,9 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.0.0",
+    "@capacitor/cli": "^5.7.8",
+    "@vitejs/plugin-legacy": "^5.0.0",
+    "terser": "^5.0.0",
     "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.37",
