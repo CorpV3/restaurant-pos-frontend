@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { ShoppingCart } from 'lucide-react'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useCartStore } from '../../stores/cartStore'
@@ -208,7 +209,7 @@ export default function Cart() {
         <div className="max-h-[45vh] overflow-y-auto p-3">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-              <span className="text-4xl mb-2">🛒</span>
+              <ShoppingCart size={40} className="mb-2 text-gray-600" />
               <p>No items yet</p>
               <p className="text-sm">Tap menu items to add</p>
             </div>

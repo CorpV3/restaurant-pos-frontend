@@ -111,37 +111,39 @@ export default function MenuGrid({ category, onCategoriesLoaded }: MenuGridProps
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4">
-      <div className="grid grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+    <div className="flex-1 overflow-y-auto p-3">
+      <div className="grid grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
         {filteredMenu.map((item) => (
           <button
             key={item.id}
             onClick={() => handleItemClick(item)}
-            className={`flex flex-col items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-orange-500 rounded-xl p-4 h-[180px] transition-all active:scale-95 ${
+            className={`flex flex-col items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-orange-500 rounded-xl p-3 h-[150px] transition-all active:scale-95 ${
               animatingId === item.id ? 'menu-item-pop menu-item-glow' : ''
             }`}
           >
+            {/* Image with text-initial fallback — no emoji (breaks on Android 5 WebView) */}
             {item.imageUrl ? (
               <img
                 src={item.imageUrl}
-                alt={item.name}
-                className="w-16 h-16 object-cover rounded-lg mb-3"
+                alt=""
+                className="w-14 h-14 object-cover rounded-lg mb-2"
                 onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = 'none';
-                  (e.currentTarget.nextSibling as HTMLElement).style.display = 'block';
+                  e.currentTarget.style.display = 'none';
+                  const fb = e.currentTarget.nextElementSibling as HTMLElement;
+                  if (fb) fb.style.display = 'flex';
                 }}
               />
             ) : null}
-            <span
-              className="text-5xl mb-3"
-              style={{ display: item.imageUrl ? 'none' : 'block' }}
+            <div
+              className="w-14 h-14 rounded-lg mb-2 bg-orange-500/20 border border-orange-500/30 items-center justify-center text-orange-400 text-lg font-bold"
+              style={{ display: item.imageUrl ? 'none' : 'flex' }}
             >
-              {item.icon}
-            </span>
-            <span className="text-sm font-medium text-white text-center leading-tight">
+              {item.name.slice(0, 2).toUpperCase()}
+            </div>
+            <span className="text-xs font-medium text-white text-center leading-tight line-clamp-2">
               {item.name}
             </span>
-            <span className="text-orange-400 font-bold text-sm mt-1">
+            <span className="text-orange-400 font-bold text-xs mt-1">
               {'\u00a3'}{item.price.toFixed(2)}
             </span>
           </button>

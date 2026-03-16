@@ -263,8 +263,8 @@ class ThermalPrinterService {
         await this.printBluetooth(bytes, bt);
         return;
       }
-      // 3. Fallback
-      this.printDesktop(data);
+      // 3. No printer available on Android — throw so UI can show error
+      throw new Error('No printer configured. Go to Settings \u2192 Printer to set up your printer.');
     } else {
       this.printDesktop(data);
     }
