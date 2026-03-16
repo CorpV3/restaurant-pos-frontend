@@ -11,12 +11,17 @@ export default function PrinterSettings() {
   const [connecting, setConnecting] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
   const [isAndroid, setIsAndroid] = useState(false)
+  const [androidSdk, setAndroidSdk] = useState<number>(0)
+  const [btSupported, setBtSupported] = useState<boolean>(false)
 
   useEffect(() => {
-    setIsAndroid(
-      typeof (window as any).Capacitor !== 'undefined' &&
-        (window as any).Capacitor.getPlatform() === 'android'
-    )
+    const platform = typeof (window as any).Capacitor !== 'undefined' &&
+      (window as any).Capacitor.getPlatform() === 'android'
+    setIsAndroid(platform)
+    thermalPrinter.getAndroidSdk().then((sdk) => {
+      setAndroidSdk(sdk)
+      setBtSupported(sdk >= 23 || !platform)
+    })
   }, [])
 
   const scan = async () => {
@@ -68,6 +73,19 @@ export default function PrinterSettings() {
         <h2 className="text-white text-lg font-bold">Thermal Printer</h2>
       </div>
 
+      {/* Device capability banner */}
+      {isAndroid && androidSdk > 0 && (
+        <div className={`border rounded-xl p-4 text-sm ${
+          btSupported
+            ? 'bg-green-900/30 border-green-700 text-green-300'
+            : 'bg-yellow-900/40 border-yellow-700 text-yellow-300'
+        }`}>
+          {btSupported
+            ? `✓ Bluetooth printing supported (Android API ${androidSdk})`
+            : `⚠ Device runs Android API ${androidSdk} (Android < 6). Bluetooth printing requires Android 6+. Receipts will open in a print dialog instead.`
+          }
+        </div>
+      )}
       {!isAndroid && (
         <div className="bg-yellow-900/40 border border-yellow-700 rounded-xl p-4 text-yellow-300 text-sm">
           Bluetooth printer pairing is only available on the Android app.
@@ -143,8 +161,8 @@ export default function PrinterSettings() {
         Test Print
       </button>
 
-      {/* Bluetooth device scan (Android only) */}
-      {isAndroid && (
+      {/* Bluetooth device scan (Android 6+ only) */}
+      {isAndroid && btSupported && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-gray-300 text-sm font-semibold">Paired Bluetooth Devices</p>
