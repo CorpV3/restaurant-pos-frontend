@@ -13,16 +13,16 @@ function resolveImageUrl(path: string | null | undefined): string | undefined {
 }
 
 const DEMO_MENU: MenuItem[] = [
-  { id: '1', name: 'Fish & Chips', price: 12.99, category: 'Mains', icon: '\U0001f41f', available: true },
-  { id: '2', name: 'Burger', price: 10.99, category: 'Mains', icon: '\U0001f354', available: true },
-  { id: '3', name: 'Pizza', price: 11.99, category: 'Mains', icon: '\U0001f355', available: true },
-  { id: '4', name: 'Chicken Wings', price: 7.99, category: 'Starters', icon: '\U0001f357', available: true },
-  { id: '5', name: 'Garlic Bread', price: 4.99, category: 'Starters', icon: '\U0001f35e', available: true },
-  { id: '6', name: 'Chips', price: 3.99, category: 'Sides', icon: '\U0001f35f', available: true },
-  { id: '7', name: 'Cola', price: 2.50, category: 'Drinks', icon: '\U0001f964', available: true },
-  { id: '8', name: 'Beer', price: 4.99, category: 'Drinks', icon: '\U0001f37a', available: true },
-  { id: '9', name: 'Ice Cream', price: 4.99, category: 'Desserts', icon: '\U0001f366', available: true },
-  { id: '10', name: 'Cake', price: 5.99, category: 'Desserts', icon: '\U0001f370', available: true },
+  { id: '1', name: 'Fish & Chips', price: 12.99, category: 'Mains', icon: '', available: true },
+  { id: '2', name: 'Burger', price: 10.99, category: 'Mains', icon: '', available: true },
+  { id: '3', name: 'Pizza', price: 11.99, category: 'Mains', icon: '', available: true },
+  { id: '4', name: 'Chicken Wings', price: 7.99, category: 'Starters', icon: '', available: true },
+  { id: '5', name: 'Garlic Bread', price: 4.99, category: 'Starters', icon: '', available: true },
+  { id: '6', name: 'Chips', price: 3.99, category: 'Sides', icon: '', available: true },
+  { id: '7', name: 'Cola', price: 2.50, category: 'Drinks', icon: '', available: true },
+  { id: '8', name: 'Beer', price: 4.99, category: 'Drinks', icon: '', available: true },
+  { id: '9', name: 'Ice Cream', price: 4.99, category: 'Desserts', icon: '', available: true },
+  { id: '10', name: 'Cake', price: 5.99, category: 'Desserts', icon: '', available: true },
 ]
 
 function mapBackendToMenuItem(item: BackendMenuItem): MenuItem {

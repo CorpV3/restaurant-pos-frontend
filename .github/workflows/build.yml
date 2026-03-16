@@ -113,7 +113,7 @@ jobs:
       - name: Decode keystore
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/release.keystore
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
       - name: Build release APK (signed)
         if: startsWith(github.ref, 'refs/tags/v')
