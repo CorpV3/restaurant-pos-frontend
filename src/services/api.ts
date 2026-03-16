@@ -1,6 +1,8 @@
 import axios from 'axios'
 
-const DEFAULT_API_URL = 'http://localhost:8000'
+// On Android (Capacitor), localhost refers to the device itself — use the real server
+const isCapacitor = typeof (window as any).Capacitor !== 'undefined'
+const DEFAULT_API_URL = isCapacitor ? 'https://testenv.corpv3.com' : 'http://localhost:8000'
 
 function getApiUrl(): string {
   try {

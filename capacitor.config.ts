@@ -6,6 +6,9 @@ const config: CapacitorConfig = {
   webDir: "dist",
   server: {
     androidScheme: "https",
+    // Allow the WebView to make network requests to external HTTPS servers
+    cleartext: false,
+    allowNavigation: ["testenv.corpv3.com"],
   },
   android: {
     buildOptions: {

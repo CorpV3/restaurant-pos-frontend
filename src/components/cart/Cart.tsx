@@ -25,7 +25,7 @@ export default function Cart() {
 
   return (
     <>
-      <div className="w-96 flex-shrink-0 bg-gray-800 border-l border-gray-700">
+      <div className="w-72 md:w-96 flex-shrink-0 bg-gray-800 border-l border-gray-700">
 
         {/* Header */}
         <div className="flex-shrink-0 p-4 border-b border-gray-700">
