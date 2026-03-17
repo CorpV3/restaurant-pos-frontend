@@ -72,7 +72,12 @@ export default function PaymentModal({
       // Charge the physical terminal — blocks until card is presented (up to 90s)
       const res = await api.post(
         '/api/v1/payments/card-terminal',
-        { order_id: orderId, amount: total },
+        {
+          restaurant_id: restaurantId,
+          order_id: orderId,
+          amount: total,
+          lane_id: 9999,
+        },
         { timeout: 120000 }
       )
       if (res.data.approved) {
