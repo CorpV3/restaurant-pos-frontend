@@ -7,7 +7,7 @@ export default function LogsPage() {
 
   useEffect(() => {
     const unsub = appLog.subscribe(() => setEntries(appLog.getEntries()))
-    return unsub
+    return () => { unsub() }
   }, [])
 
   const copyAll = () => {
