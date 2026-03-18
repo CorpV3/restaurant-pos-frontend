@@ -32,7 +32,7 @@ export const usePrinterStore = create<PrinterState>()(
       savedAddress: null,
       savedName: null,
       autoPrint: false,
-      paperWidth: 42,
+      paperWidth: 48,
 
       setPrinterType: (t) => set({ printerType: t }),
       setSerialPath: (p) => set({ serialPath: p }),

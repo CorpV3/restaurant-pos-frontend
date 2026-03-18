@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
+import { SerialPort } from 'serialport'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -55,4 +56,34 @@ ipcMain.handle('get-app-version', () => app.getVersion())
 
 ipcMain.handle('get-app-path', (_, name: string) => {
   return app.getPath(name as any)
+})
+
+// List available serial/COM ports
+ipcMain.handle('printer:list-ports', async () => {
+  try {
+    const ports = await SerialPort.list()
+    return ports.map((p) => ({ path: p.path, manufacturer: p.manufacturer ?? '' }))
+  } catch {
+    return []
+  }
+})
+
+// Write raw ESC/POS bytes (base64) to a serial/COM port
+ipcMain.handle('printer:print-raw', (_event, portPath: string, base64Data: string) => {
+  return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+    const port = new SerialPort({ path: portPath, baudRate: 115200, autoOpen: false })
+    port.open((openErr) => {
+      if (openErr) {
+        resolve({ ok: false, error: openErr.message })
+        return
+      }
+      const buf = Buffer.from(base64Data, 'base64')
+      port.write(buf, (writeErr) => {
+        port.drain(() => {
+          port.close()
+          resolve(writeErr ? { ok: false, error: writeErr.message } : { ok: true })
+        })
+      })
+    })
+  })
 })

@@ -53,66 +53,91 @@ export interface BluetoothDevice {
 
 // ── Receipt byte builder ──────────────────────────────────────────────────────
 
-export function buildReceiptBytes(data: ReceiptData, paperWidth = 42): Uint8Array {
+export function buildReceiptBytes(data: ReceiptData, paperWidth = 48): Uint8Array {
   const sym = data.currencySymbol ?? '£';
   const W = paperWidth;
+  const PRICE_COL = 9; // fixed-width price column (e.g. "  £999.99")
   const rows: number[][] = [];
 
   const add = (...cmds: number[][]) => rows.push(...cmds);
   const charBytes = (s: string) => Array.from(s).map((c) => c.charCodeAt(0));
   const row = (s: string) => [...charBytes(s), LF];
 
-  const pad = (left: string, right: string) => {
-    const gap = W - left.length - right.length;
-    return left + ' '.repeat(Math.max(1, gap)) + right;
+  /** Right-align `right` in a fixed column, pad `left` to fill remaining space */
+  const padLine = (left: string, right: string) => {
+    const priceStr = right.padStart(PRICE_COL);
+    const nameWidth = W - PRICE_COL;
+    const name = left.length > nameWidth ? left.slice(0, nameWidth - 1) + '.' : left.padEnd(nameWidth);
+    return name + priceStr;
   };
 
-  // Init + center
+  const divider = (char = '-') => row(char.repeat(W));
+
+  const centered = (s: string) => {
+    const trimmed = s.slice(0, W);
+    const pad = Math.max(0, Math.floor((W - trimmed.length) / 2));
+    return ' '.repeat(pad) + trimmed;
+  };
+
+  // Init
   add(ESCPOS.INIT, ESCPOS.ALIGN_CENTER);
 
-  // Restaurant name
+  // Restaurant name — double height bold
   add(ESCPOS.DOUBLE_HEIGHT, ESCPOS.BOLD_ON);
   add(row(data.restaurantName.slice(0, W)));
   add(ESCPOS.NORMAL_SIZE, ESCPOS.BOLD_OFF);
   if (data.restaurantAddress) add(row(data.restaurantAddress.slice(0, W)));
-  add(ESCPOS.FEED_LINE);
 
-  // Order header
+  // Stars divider
+  add(ESCPOS.FEED_LINE);
   add(ESCPOS.ALIGN_LEFT);
-  add(row('-'.repeat(W)));
-  add(row(pad('Order: ' + data.orderRef, data.date)));
+  add(divider('*'));
+
+  // Order info — two columns
+  const dateStr = data.date.slice(0, 20);
+  add(row(padLine('Order: ' + data.orderRef, dateStr)));
   add(row('Table: ' + data.tableName));
-  add(row('-'.repeat(W)));
+  add(divider('-'));
   add(ESCPOS.FEED_LINE);
 
-  // Items
+  // Column headers
+  add(ESCPOS.BOLD_ON);
+  add(row(padLine('ITEM', 'AMOUNT')));
+  add(ESCPOS.BOLD_OFF);
+  add(divider('-'));
+
+  // Items — qty * name, right-aligned price
   for (const item of data.items) {
+    const priceVal = sym + (item.qty * item.price).toFixed(2);
     const label = item.qty > 1 ? `${item.qty}x ${item.name}` : item.name;
-    const truncated = label.length > W - 7 ? label.slice(0, W - 10) + '...' : label;
-    add(row(pad(truncated, sym + (item.qty * item.price).toFixed(2))));
+    add(row(padLine(label, priceVal)));
   }
-  add(row('-'.repeat(W)));
+  add(divider('-'));
 
   // Totals
   if (data.tax !== undefined && data.subtotal !== undefined) {
-    add(row(pad('Subtotal', sym + data.subtotal.toFixed(2))));
-    add(row(pad('Tax', sym + data.tax.toFixed(2))));
+    add(row(padLine('Subtotal', sym + data.subtotal.toFixed(2))));
+    add(row(padLine('Tax (10%)', sym + data.tax.toFixed(2))));
+    add(divider('-'));
   }
 
   add(ESCPOS.BOLD_ON);
-  add(row(pad('TOTAL', sym + data.total.toFixed(2))));
+  add(row(padLine('TOTAL', sym + data.total.toFixed(2))));
   add(ESCPOS.BOLD_OFF);
-  add(row(pad('Payment', data.paymentMethod.toUpperCase())));
+  add(row(padLine('Payment', data.paymentMethod.toUpperCase())));
 
   if (data.paymentMethod === 'cash' && data.cashReceived !== undefined) {
-    add(row(pad('Cash', sym + data.cashReceived.toFixed(2))));
-    add(row(pad('Change', sym + (data.change ?? 0).toFixed(2))));
+    add(row(padLine('Cash', sym + data.cashReceived.toFixed(2))));
+    add(ESCPOS.BOLD_ON);
+    add(row(padLine('Change', sym + (data.change ?? 0).toFixed(2))));
+    add(ESCPOS.BOLD_OFF);
   }
 
   // Footer
   add(ESCPOS.FEED_LINE, ESCPOS.ALIGN_CENTER);
-  add(row(data.footer ?? 'Thank you for dining with us!'));
-  add(row('Powered by CorpV3 POS'));
+  add(row(centered(data.footer ?? 'Thank you for dining with us!')));
+  add(row(centered('** CorpV3 POS **')));
+  add(ESCPOS.FEED_LINE);
 
   // Feed + cut
   add(ESCPOS.FEED_3, ESCPOS.CUT_PAPER);
@@ -127,6 +152,10 @@ function isAndroid(): boolean {
     typeof (window as any).Capacitor !== 'undefined' &&
     (window as any).Capacitor.getPlatform() === 'android'
   );
+}
+
+function isElectron(): boolean {
+  return typeof (window as any).electronAPI?.printer !== 'undefined';
 }
 
 /** SerialPrinterPlugin — injected native plugin for built-in serial printers (e.g. H10-3) */
@@ -150,7 +179,17 @@ class ThermalPrinterService {
   private _sdk: number | null = null;
 
   /** Configurable serial port path — set by PrinterSettings when user changes it */
-  serialPath = '/dev/ttyS1';
+  serialPath = isElectron() ? 'COM1' : '/dev/ttyS1';
+
+  /** List COM ports available on Windows (Electron only) */
+  async listElectronPorts(): Promise<{ path: string; manufacturer: string }[]> {
+    if (!isElectron()) return [];
+    try {
+      return await (window as any).electronAPI.printer.listPorts();
+    } catch {
+      return [];
+    }
+  }
 
   /** Android SDK level (0 on non-Android). Cached after first call. */
   async getAndroidSdk(): Promise<number> {
@@ -249,6 +288,16 @@ class ThermalPrinterService {
    */
   async printReceipt(data: ReceiptData, paperWidth = 42): Promise<void> {
     const bytes = buildReceiptBytes(data, paperWidth);
+
+    if (isElectron()) {
+      // Windows Electron — send raw ESC/POS bytes via IPC to the serial/COM port
+      const b64 = btoa(String.fromCharCode(...bytes));
+      const result = await (window as any).electronAPI.printer.printRaw(this.serialPath, b64);
+      if (!result.ok) {
+        throw new Error(`Print failed on ${this.serialPath}: ${result.error}`);
+      }
+      return;
+    }
 
     if (isAndroid()) {
       // 1. Built-in serial printer (H10-3, etc.)

@@ -11,6 +11,7 @@ export default function PrinterSettings() {
   } = usePrinterStore()
 
   const [isAndroid, setIsAndroid] = useState(false)
+  const [isElectronWindows, setIsElectronWindows] = useState(false)
   const [hasSerialPlugin, setHasSerialPlugin] = useState(false)
   const [detectedPaths, setDetectedPaths] = useState<string[]>([])
   const [serialPathInput, setSerialPathInput] = useState(serialPath)
@@ -27,6 +28,17 @@ export default function PrinterSettings() {
       typeof (window as any).Capacitor !== 'undefined' &&
       (window as any).Capacitor.getPlatform() === 'android'
     setIsAndroid(platform)
+
+    const electronWindows = typeof (window as any).electronAPI?.printer !== 'undefined'
+    setIsElectronWindows(electronWindows)
+
+    if (electronWindows) {
+      // Auto-detect Windows COM ports
+      thermalPrinter.listElectronPorts().then((ports) =>
+        setDetectedPaths(ports.map((p) => p.path))
+      )
+      thermalPrinter.serialPath = serialPath
+    }
 
     const hasPlugin = thermalPrinter.hasSerialPlugin()
     setHasSerialPlugin(hasPlugin)
@@ -97,7 +109,61 @@ export default function PrinterSettings() {
         <h2 className="text-white text-lg font-bold">Thermal Printer</h2>
       </div>
 
-      {!isAndroid && (
+      {/* ── Windows COM port selector ── */}
+      {isElectronWindows && (
+        <div className="bg-gray-700 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-gray-300 text-sm font-semibold">COM Port (USB / Serial)</p>
+            <button
+              onClick={() =>
+                thermalPrinter.listElectronPorts().then((ports) =>
+                  setDetectedPaths(ports.map((p) => p.path))
+                )
+              }
+              className="text-xs px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded-lg flex items-center gap-1"
+            >
+              <RefreshCw size={11} /> Scan
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={serialPathInput}
+              onChange={(e) => setSerialPathInput(e.target.value)}
+              className="flex-1 bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+              placeholder="COM3"
+            />
+            <button
+              onClick={applySerialPath}
+              className="px-3 py-2 bg-blue-700 hover:bg-blue-600 text-white text-xs rounded-lg"
+            >
+              Apply
+            </button>
+          </div>
+          {detectedPaths.length > 0 && (
+            <div>
+              <p className="text-gray-400 text-xs mb-1">Detected ports:</p>
+              <div className="flex flex-wrap gap-1">
+                {detectedPaths.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => { setSerialPathInput(p); setSerialPath(p); thermalPrinter.serialPath = p }}
+                    className={`text-xs px-2 py-1 rounded-lg font-mono ${
+                      serialPath === p ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="text-gray-500 text-xs">
+            CTE-RP80: plug in USB cable → Windows assigns a COM port (e.g. COM3). Check Device Manager if unsure.
+          </p>
+        </div>
+      )}
+
+      {!isAndroid && !isElectronWindows && (
         <div className="bg-yellow-900/40 border border-yellow-700 rounded-xl p-4 text-yellow-300 text-sm">
           On desktop, receipts open in a browser print dialog.
         </div>
