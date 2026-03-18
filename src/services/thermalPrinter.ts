@@ -284,28 +284,42 @@ class ThermalPrinterService {
   ): Promise<void> {
     const bytes = buildReceiptBytes(data, paperWidth);
 
+    const citaq = getCitaqPrinter();
+    const serialPlugin = printerType === 'serial' ? getSerialPlugin() : null;
+    const bt = getBtSerial();
+    const android = isAndroid();
+
+    console.log('[Printer] printReceipt called', {
+      printerType,
+      savedAddress,
+      hasCitaq: !!citaq,
+      hasSerialPlugin: !!serialPlugin,
+      hasBtSerial: !!bt,
+      isAndroid: android,
+      bytesLen: bytes.length,
+    });
+
     // ── 0. CitaqPrinter JS interface — H10-3 direct serial (Android 4.x+) ─────
     // Works even if Capacitor is not initialized (old Android versions)
-    const citaq = getCitaqPrinter();
     if (citaq) {
+      console.log('[Printer] path=CitaqJSInterface');
       const b64 = btoa(String.fromCharCode(...bytes));
       const ok = citaq.print(b64);
-      if (!ok) throw new Error('CitaqPrinter.print() failed — check serial port permissions');
+      console.log('[Printer] CitaqPrinter.print() returned:', ok);
+      if (!ok) throw new Error('CitaqPrinter.print() returned false — check /dev/ttyS1 permissions');
       return;
     }
 
     // ── 1. Serial: Capacitor SerialPrinterPlugin ───────────────────────────────
-    if (printerType === 'serial') {
-      const serialPlugin = getSerialPlugin();
-      if (serialPlugin) {
-        await this.printSerial(bytes, serialPlugin);
-        return;
-      }
+    if (serialPlugin) {
+      console.log('[Printer] path=SerialPrinterPlugin, serialPath=' + this.serialPath);
+      await this.printSerial(bytes, serialPlugin);
+      return;
     }
 
     // ── 2. Bluetooth: external ESC/POS printer ────────────────────────────────
-    const bt = getBtSerial();
     if (bt) {
+      console.log('[Printer] path=Bluetooth, connectedAddress=' + this.connectedAddress);
       // Auto-reconnect using saved address if not currently connected (e.g. after app restart)
       if (!this.connectedAddress && savedAddress) {
         const ok = await this.connect(savedAddress);
@@ -322,12 +336,14 @@ class ThermalPrinterService {
 
     // ── 3. Desktop fallback (Windows / browser) ───────────────────────────────
     // Only use browser print dialog when no printer plugins are available at all
-    if (!isAndroid()) {
+    if (!android) {
+      console.log('[Printer] path=Desktop (browser print dialog)');
       this.printDesktop(data);
       return;
     }
 
     // Android with no printer configured — show actionable error
+    console.error('[Printer] No printer path found on Android — all plugins missing');
     throw new Error('No printer configured. Go to Settings \u2192 Printer to set up your printer.');
   }
 
