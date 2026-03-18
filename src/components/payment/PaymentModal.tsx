@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import type { CartItem } from '../../types'
 import { createOrder, completeOrder } from '../../services/orderService'
 import { api } from '../../services/api'
+import { appLog } from '../../services/appLogger'
 
 interface PaymentModalProps {
   total: number
@@ -39,13 +40,16 @@ export default function PaymentModal({
   const handlePay = async () => {
     if (!method) return
     setProcessing(true)
+    appLog.info(`Cash payment: table=${tableName} total=${total} cashReceived=${cashReceived}`)
     try {
       let orderId = existingOrderId
       if (!orderId) {
         const order = await createOrder(cartItems!, restaurantId!, tableId ?? null)
         orderId = order.id
+        appLog.info(`Cash: order created orderId=${orderId}`)
       }
       await completeOrder(orderId, method)
+      appLog.info(`Cash: completeOrder success orderId=${orderId}`)
       toast.success(`Payment complete — ${tableName}`)
       const cr = cashReceived ? parseFloat(cashReceived) : undefined
       onComplete(method, orderId, cr)
@@ -55,6 +59,7 @@ export default function PaymentModal({
           ?.response?.data?.detail ||
         (err as { message?: string })?.message ||
         'Payment failed'
+      appLog.error(`Cash payment failed: ${msg}`)
       toast.error(msg)
       setProcessing(false)
     }
@@ -63,12 +68,15 @@ export default function PaymentModal({
   const handleCardTerminal = async () => {
     setProcessing(true)
     setTerminalStatus('waiting')
+    appLog.info(`Card terminal: table=${tableName} total=${total} restaurantId=${restaurantId}`)
     try {
       let orderId = existingOrderId
       if (!orderId) {
         const order = await createOrder(cartItems!, restaurantId!, tableId ?? null)
         orderId = order.id
+        appLog.info(`Card: order created orderId=${orderId}`)
       }
+      appLog.info(`Card: sending to terminal orderId=${orderId} amount=${total} laneId=9999`)
       // Charge the physical terminal — blocks until card is presented (up to 90s)
       const res = await api.post(
         '/api/v1/payments/card-terminal',
@@ -80,13 +88,16 @@ export default function PaymentModal({
         },
         { timeout: 120000 }
       )
+      appLog.info(`Card: terminal response approved=${res.data.approved} message=${res.data.message ?? ''}`)
       if (res.data.approved) {
         setTerminalStatus('approved')
         await completeOrder(orderId, 'card')
+        appLog.info(`Card: completeOrder success orderId=${orderId}`)
         toast.success(`Card payment approved — ${tableName}`)
         onComplete('card', orderId)
       } else {
         setTerminalStatus('declined')
+        appLog.warn(`Card: declined — ${res.data.message}`)
         toast.error(`Card declined: ${res.data.message}`)
         setProcessing(false)
       }
@@ -97,6 +108,7 @@ export default function PaymentModal({
           ?.response?.data?.detail ||
         (err as { message?: string })?.message ||
         'Terminal error'
+      appLog.error(`Card terminal error: ${msg}`)
       toast.error(msg)
       setProcessing(false)
     }
