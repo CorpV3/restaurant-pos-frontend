@@ -154,10 +154,6 @@ function isAndroid(): boolean {
   );
 }
 
-function isElectron(): boolean {
-  return typeof (window as any).electronAPI?.printer !== 'undefined';
-}
-
 /** SerialPrinterPlugin — injected native plugin for built-in serial printers (e.g. H10-3) */
 function getSerialPlugin(): any | null {
   return (window as any).Capacitor?.Plugins?.SerialPrinter ?? null;
@@ -179,17 +175,7 @@ class ThermalPrinterService {
   private _sdk: number | null = null;
 
   /** Configurable serial port path — set by PrinterSettings when user changes it */
-  serialPath = isElectron() ? 'COM1' : '/dev/ttyS1';
-
-  /** List COM ports available on Windows (Electron only) */
-  async listElectronPorts(): Promise<{ path: string; manufacturer: string }[]> {
-    if (!isElectron()) return [];
-    try {
-      return await (window as any).electronAPI.printer.listPorts();
-    } catch {
-      return [];
-    }
-  }
+  serialPath = '/dev/ttyS1';
 
   /** Android SDK level (0 on non-Android). Cached after first call. */
   async getAndroidSdk(): Promise<number> {
@@ -279,44 +265,55 @@ class ThermalPrinterService {
   /**
    * Print a receipt.
    *
-   * Priority order on Android:
-   *   1. SerialPrinterPlugin (built-in serial printer, e.g. H10-3)
-   *   2. Bluetooth via cordova-plugin-bluetooth-serial (external BT printer)
-   *   3. Browser print dialog (fallback)
+   * Routing is based on available plugins, NOT platform detection.
+   * This ensures printing works even if Capacitor platform check is unreliable.
    *
-   * Desktop: always uses browser print dialog.
+   * @param printerType - 'serial' (H10-3 built-in) or 'bluetooth' (external BT)
+   * @param savedAddress - Saved BT MAC address for auto-reconnect after app restart
    */
-  async printReceipt(data: ReceiptData, paperWidth = 42): Promise<void> {
+  async printReceipt(
+    data: ReceiptData,
+    paperWidth = 48,
+    printerType: 'serial' | 'bluetooth' = 'serial',
+    savedAddress: string | null = null,
+  ): Promise<void> {
     const bytes = buildReceiptBytes(data, paperWidth);
 
-    if (isElectron()) {
-      // Windows Electron — send raw ESC/POS bytes via IPC to the serial/COM port
-      const b64 = btoa(String.fromCharCode(...bytes));
-      const result = await (window as any).electronAPI.printer.printRaw(this.serialPath, b64);
-      if (!result.ok) {
-        throw new Error(`Print failed on ${this.serialPath}: ${result.error}`);
-      }
-      return;
-    }
-
-    if (isAndroid()) {
-      // 1. Built-in serial printer (H10-3, etc.)
+    // ── 1. Serial: Citaq H10-3 built-in printer ───────────────────────────────
+    if (printerType === 'serial') {
       const serialPlugin = getSerialPlugin();
       if (serialPlugin) {
         await this.printSerial(bytes, serialPlugin);
         return;
       }
-      // 2. Bluetooth external printer
-      const bt = getBtSerial();
-      if (bt && this.connectedAddress) {
-        await this.printBluetooth(bytes, bt);
-        return;
-      }
-      // 3. No printer available on Android — throw so UI can show error
-      throw new Error('No printer configured. Go to Settings \u2192 Printer to set up your printer.');
-    } else {
-      this.printDesktop(data);
     }
+
+    // ── 2. Bluetooth: external ESC/POS printer ────────────────────────────────
+    const bt = getBtSerial();
+    if (bt) {
+      // Auto-reconnect using saved address if not currently connected (e.g. after app restart)
+      if (!this.connectedAddress && savedAddress) {
+        const ok = await this.connect(savedAddress);
+        if (!ok) {
+          throw new Error('Could not reconnect to Bluetooth printer — is it powered on and in range?');
+        }
+      }
+      if (!this.connectedAddress) {
+        throw new Error('No Bluetooth printer connected. Go to Settings \u2192 Printer to connect.');
+      }
+      await this.printBluetooth(bytes, bt);
+      return;
+    }
+
+    // ── 3. Desktop fallback (Windows / browser) ───────────────────────────────
+    // Only use browser print dialog when no printer plugins are available at all
+    if (!isAndroid()) {
+      this.printDesktop(data);
+      return;
+    }
+
+    // Android with no printer configured — show actionable error
+    throw new Error('No printer configured. Go to Settings \u2192 Printer to set up your printer.');
   }
 
   private async printSerial(bytes: Uint8Array, plugin: any): Promise<void> {

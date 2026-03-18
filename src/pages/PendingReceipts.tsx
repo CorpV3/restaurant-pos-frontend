@@ -20,7 +20,7 @@ interface CompletedReceipt {
 
 export default function PendingReceipts({ onCountChange }: PendingReceiptsProps) {
   const { restaurant } = useAuthStore()
-  const { paperWidth } = usePrinterStore()
+  const { paperWidth, printerType, savedAddress } = usePrinterStore()
   const [orders, setOrders] = useState<PendingOrder[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<PendingOrder | null>(null)
@@ -73,9 +73,9 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
         total: order.total_amount,
         paymentMethod: method,
         currencySymbol,
-      }, paperWidth)
-    } catch {
-      toast.error('Print failed — check printer connection')
+      }, paperWidth, printerType, savedAddress)
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Print failed — check printer connection')
     }
     setPrinting(false)
   }

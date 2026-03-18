@@ -26,7 +26,7 @@ export default function Cart() {
   const { items, removeItem, updateQuantity, clearCart, subtotal, vat, total } =
     useCartStore()
   const { restaurant } = useAuthStore()
-  const { paperWidth } = usePrinterStore()
+  const { paperWidth, printerType, savedAddress } = usePrinterStore()
   const [showPayment, setShowPayment] = useState(false)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
   const [tables, setTables] = useState<Table[]>([])
@@ -60,9 +60,9 @@ export default function Cart() {
         cashReceived: receipt.cashReceived,
         change: receipt.change,
         currencySymbol,
-      }, paperWidth)
-    } catch {
-      toast.error('Print failed — check printer connection')
+      }, paperWidth, printerType, savedAddress)
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Print failed — check printer connection')
     }
     setPrinting(false)
   }
