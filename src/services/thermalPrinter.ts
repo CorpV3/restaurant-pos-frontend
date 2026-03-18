@@ -22,7 +22,7 @@ export const ESCPOS = {
   BOLD_OFF:      [ESC, 0x45, 0x00],     // 1B 45 00
   DOUBLE_HEIGHT: [GS,  0x21, 0x01],     // 1D 21 01 — double height x2
   NORMAL_SIZE:   [GS,  0x21, 0x00],     // 1D 21 00 — normal size
-  CUT_PAPER:     [GS,  0x56, 0x00],     // 1D 56 00 — full cut
+  CUT_PAPER:     [GS,  0x56, 0x42, 0x00], // 1D 56 42 00 — Citaq partial cut (GS V B 0)
   FEED_LINE:     [LF],                  // 0A
   FEED_3:        [ESC, 0x64, 0x03],     // 1B 64 03 — feed 3 lines
 };
@@ -154,6 +154,11 @@ function isAndroid(): boolean {
   );
 }
 
+/** CitaqPrinter — direct @JavascriptInterface for Citaq H10-3 (Android 4.x+, bypasses Capacitor) */
+function getCitaqPrinter(): any | null {
+  return (window as any).CitaqPrinter ?? null;
+}
+
 /** SerialPrinterPlugin — injected native plugin for built-in serial printers (e.g. H10-3) */
 function getSerialPlugin(): any | null {
   return (window as any).Capacitor?.Plugins?.SerialPrinter ?? null;
@@ -279,7 +284,17 @@ class ThermalPrinterService {
   ): Promise<void> {
     const bytes = buildReceiptBytes(data, paperWidth);
 
-    // ── 1. Serial: Citaq H10-3 built-in printer ───────────────────────────────
+    // ── 0. CitaqPrinter JS interface — H10-3 direct serial (Android 4.x+) ─────
+    // Works even if Capacitor is not initialized (old Android versions)
+    const citaq = getCitaqPrinter();
+    if (citaq) {
+      const b64 = btoa(String.fromCharCode(...bytes));
+      const ok = citaq.print(b64);
+      if (!ok) throw new Error('CitaqPrinter.print() failed — check serial port permissions');
+      return;
+    }
+
+    // ── 1. Serial: Capacitor SerialPrinterPlugin ───────────────────────────────
     if (printerType === 'serial') {
       const serialPlugin = getSerialPlugin();
       if (serialPlugin) {
