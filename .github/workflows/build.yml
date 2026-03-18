@@ -94,15 +94,10 @@ jobs:
       - name: Inject printer plugins
         run: |
           PKG="android/app/src/main/java/com/corpv3/restaurantpos"
-          # Copy plugin Java files into the app package
+          # Copy all plugin files — MainActivity.java replaces the generated one entirely
           cp android-plugin/SerialPrinterPlugin.java "$PKG/"
           cp android-plugin/PrinterJSInterface.java "$PKG/"
-          # Add imports after BridgeActivity import
-          sed -i 's/import com.getcapacitor.BridgeActivity;/import com.getcapacitor.BridgeActivity;\nimport com.corpv3.restaurantpos.SerialPrinterPlugin;\nimport com.corpv3.restaurantpos.PrinterJSInterface;/' "$PKG/MainActivity.java"
-          # Register Capacitor plugin before super.onCreate
-          sed -i 's/super.onCreate(savedInstanceState);/registerPlugin(SerialPrinterPlugin.class);\n        super.onCreate(savedInstanceState);/' "$PKG/MainActivity.java"
-          # Register direct JS interface after super.onCreate (bypasses Capacitor — works on Android 4.x)
-          sed -i 's/super.onCreate(savedInstanceState);/super.onCreate(savedInstanceState);\n        getBridge().getWebView().addJavascriptInterface(new PrinterJSInterface(), "CitaqPrinter");/' "$PKG/MainActivity.java"
+          cp android-plugin/MainActivity.java "$PKG/"
 
       - name: Sync Capacitor
         run: npx cap sync android

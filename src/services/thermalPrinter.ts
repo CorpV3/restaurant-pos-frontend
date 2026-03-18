@@ -314,7 +314,7 @@ class ThermalPrinterService {
     }
 
     // ── 2. Bluetooth: external ESC/POS printer ────────────────────────────────
-    if (bt) {
+    if (bt && printerType === 'bluetooth') {
       appLog.info(`path=Bluetooth → connected=${this.connectedAddress ?? 'none'}`);
       // Auto-reconnect using saved address if not currently connected (e.g. after app restart)
       if (!this.connectedAddress && savedAddress) {
@@ -342,8 +342,11 @@ class ThermalPrinterService {
       return;
     }
 
-    // Android with no printer configured — show actionable error
-    appLog.error('No printer path found on Android — CitaqPrinter=null, SerialPlugin=null, BtSerial=null');
+    // No printer path found
+    appLog.error(`No printer path found — type=${printerType} citaq=${!!citaq} serial=${!!serialPlugin} bt=${!!bt} android=${android}`);
+    if (printerType === 'serial') {
+      throw new Error('Serial printer not available — CitaqPrinter bridge missing. Please reinstall the app.');
+    }
     throw new Error('No printer configured. Go to Settings \u2192 Printer to set up your printer.');
   }
 
