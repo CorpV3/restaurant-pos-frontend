@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { useAuthStore } from '../stores/authStore'
 import { usePrinterStore } from '../stores/printerStore'
 import { thermalPrinter } from '../services/thermalPrinter'
+import { appLog } from '../services/appLogger'
 import { fetchPendingOrders, type PendingOrder } from '../services/orderService'
 import PaymentModal from '../components/payment/PaymentModal'
 import toast from 'react-hot-toast'
@@ -75,6 +76,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
         currencySymbol,
       }, paperWidth, printerType, savedAddress)
     } catch (e: any) {
+      appLog.error(`Receipts print failed: ${e?.message ?? e}`)
       toast.error(e?.message ?? 'Print failed — check printer connection')
     }
     setPrinting(false)

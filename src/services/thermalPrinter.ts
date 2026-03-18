@@ -145,6 +145,8 @@ export function buildReceiptBytes(data: ReceiptData, paperWidth = 48): Uint8Arra
   return new Uint8Array(rows.flat());
 }
 
+import { appLog } from './appLogger'
+
 // ── Platform helpers ──────────────────────────────────────────────────────────
 
 function isAndroid(): boolean {
@@ -231,8 +233,8 @@ class ThermalPrinterService {
         name: d.name ?? d.class ?? 'Unknown',
         address: d.address,
       }));
-    } catch (e) {
-      console.error('[Printer] listDevices error', e);
+    } catch (e: any) {
+      appLog.error(`listDevices error: ${e?.message ?? e}`);
       return [];
     }
   }
@@ -245,8 +247,8 @@ class ThermalPrinterService {
       await promisify<void>((ok, err) => bt.connect(address, ok, err));
       this.connectedAddress = address;
       return true;
-    } catch (e) {
-      console.error('[Printer] connect error', e);
+    } catch (e: any) {
+      appLog.error(`BT connect error for ${address}: ${e?.message ?? e}`);
       return false;
     }
   }
@@ -289,61 +291,59 @@ class ThermalPrinterService {
     const bt = getBtSerial();
     const android = isAndroid();
 
-    console.log('[Printer] printReceipt called', {
-      printerType,
-      savedAddress,
-      hasCitaq: !!citaq,
-      hasSerialPlugin: !!serialPlugin,
-      hasBtSerial: !!bt,
-      isAndroid: android,
-      bytesLen: bytes.length,
-    });
+    appLog.info(`printReceipt: type=${printerType} citaq=${!!citaq} serial=${!!serialPlugin} bt=${!!bt} android=${android} bytes=${bytes.length}`);
 
     // ── 0. CitaqPrinter JS interface — H10-3 direct serial (Android 4.x+) ─────
     // Works even if Capacitor is not initialized (old Android versions)
     if (citaq) {
-      console.log('[Printer] path=CitaqJSInterface');
+      appLog.info('path=CitaqJSInterface → writing to serial port');
       const b64 = btoa(String.fromCharCode(...bytes));
       const ok = citaq.print(b64);
-      console.log('[Printer] CitaqPrinter.print() returned:', ok);
+      appLog.info(`CitaqPrinter.print() returned: ${ok}`);
       if (!ok) throw new Error('CitaqPrinter.print() returned false — check /dev/ttyS1 permissions');
+      appLog.info('CitaqPrinter: print success');
       return;
     }
 
     // ── 1. Serial: Capacitor SerialPrinterPlugin ───────────────────────────────
     if (serialPlugin) {
-      console.log('[Printer] path=SerialPrinterPlugin, serialPath=' + this.serialPath);
+      appLog.info(`path=SerialPrinterPlugin → ${this.serialPath}`);
       await this.printSerial(bytes, serialPlugin);
+      appLog.info('SerialPrinterPlugin: print success');
       return;
     }
 
     // ── 2. Bluetooth: external ESC/POS printer ────────────────────────────────
     if (bt) {
-      console.log('[Printer] path=Bluetooth, connectedAddress=' + this.connectedAddress);
+      appLog.info(`path=Bluetooth → connected=${this.connectedAddress ?? 'none'}`);
       // Auto-reconnect using saved address if not currently connected (e.g. after app restart)
       if (!this.connectedAddress && savedAddress) {
+        appLog.info(`Bluetooth: reconnecting to ${savedAddress}`);
         const ok = await this.connect(savedAddress);
         if (!ok) {
+          appLog.error(`Bluetooth: reconnect failed for ${savedAddress}`);
           throw new Error('Could not reconnect to Bluetooth printer — is it powered on and in range?');
         }
+        appLog.info('Bluetooth: reconnect success');
       }
       if (!this.connectedAddress) {
         throw new Error('No Bluetooth printer connected. Go to Settings \u2192 Printer to connect.');
       }
       await this.printBluetooth(bytes, bt);
+      appLog.info('Bluetooth: print success');
       return;
     }
 
     // ── 3. Desktop fallback (Windows / browser) ───────────────────────────────
     // Only use browser print dialog when no printer plugins are available at all
     if (!android) {
-      console.log('[Printer] path=Desktop (browser print dialog)');
+      appLog.warn('path=Desktop (browser print dialog) — no printer plugins found');
       this.printDesktop(data);
       return;
     }
 
     // Android with no printer configured — show actionable error
-    console.error('[Printer] No printer path found on Android — all plugins missing');
+    appLog.error('No printer path found on Android — CitaqPrinter=null, SerialPlugin=null, BtSerial=null');
     throw new Error('No printer configured. Go to Settings \u2192 Printer to set up your printer.');
   }
 
@@ -353,7 +353,7 @@ class ThermalPrinterService {
     try {
       await plugin.print({ path: this.serialPath, data: b64 });
     } catch (e: any) {
-      console.error('[Printer] serial write error', e);
+      appLog.error(`SerialPlugin write error on ${this.serialPath}: ${e?.message ?? e}`);
       throw new Error(`Serial print failed on ${this.serialPath}: ${e?.message ?? e}`);
     }
   }
@@ -364,8 +364,8 @@ class ThermalPrinterService {
     }
     try {
       await promisify<void>((ok, err) => bt.write(bytes.buffer, ok, err));
-    } catch (e) {
-      console.error('[Printer] BT write error', e);
+    } catch (e: any) {
+      appLog.error(`Bluetooth write error: ${e?.message ?? e}`);
       throw new Error('Bluetooth print failed — is the printer on and connected?');
     }
   }

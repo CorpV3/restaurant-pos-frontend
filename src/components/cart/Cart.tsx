@@ -6,6 +6,7 @@ import { useCartStore } from '../../stores/cartStore'
 import { useAuthStore } from '../../stores/authStore'
 import { usePrinterStore } from '../../stores/printerStore'
 import { thermalPrinter } from '../../services/thermalPrinter'
+import { appLog } from '../../services/appLogger'
 import PaymentModal from '../payment/PaymentModal'
 import { fetchTables, type Table } from '../../services/tableService'
 
@@ -62,6 +63,7 @@ export default function Cart() {
         currencySymbol,
       }, paperWidth, printerType, savedAddress)
     } catch (e: any) {
+      appLog.error(`Cart print failed: ${e?.message ?? e}`)
       toast.error(e?.message ?? 'Print failed — check printer connection')
     }
     setPrinting(false)

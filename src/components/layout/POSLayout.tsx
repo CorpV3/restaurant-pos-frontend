@@ -5,6 +5,7 @@ import CategoryBar from '../menu/CategoryBar'
 import StatusBar from '../common/StatusBar'
 import ReportsPage from '../../pages/ReportsPage'
 import PendingReceipts from '../../pages/PendingReceipts'
+import LogsPage from '../../pages/LogsPage'
 
 interface POSLayoutProps {
   onLogout: () => void
@@ -12,7 +13,7 @@ interface POSLayoutProps {
 
 const DEFAULT_CATEGORIES = ['All', 'Starters', 'Mains', 'Sides', 'Drinks', 'Desserts']
 
-type Tab = 'pos' | 'receipts' | 'reports'
+type Tab = 'pos' | 'receipts' | 'reports' | 'logs'
 
 export default function POSLayout({ onLogout }: POSLayoutProps) {
   const [activeTab, setActiveTab] = useState<Tab>('pos')
@@ -65,6 +66,16 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
         >
           Reports
         </button>
+        <button
+          onClick={() => setActiveTab('logs')}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'logs'
+              ? 'border-orange-500 text-orange-400'
+              : 'border-transparent text-gray-400 hover:text-white'
+          }`}
+        >
+          Logs
+        </button>
       </div>
 
       {activeTab === 'pos' ? (
@@ -84,8 +95,10 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
         </div>
       ) : activeTab === 'receipts' ? (
         <PendingReceipts onCountChange={setPendingCount} />
-      ) : (
+      ) : activeTab === 'reports' ? (
         <ReportsPage />
+      ) : (
+        <LogsPage />
       )}
     </div>
   )
