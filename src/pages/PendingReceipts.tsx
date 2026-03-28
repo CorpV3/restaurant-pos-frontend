@@ -86,6 +86,26 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
   }
 
   const [printingLabels, setPrintingLabels] = useState(false)
+  const [printingLabelOrderId, setPrintingLabelOrderId] = useState<string | null>(null)
+
+  const handlePrintLabelsForOrder = async (order: PendingOrder) => {
+    setPrintingLabelOrderId(order.id)
+    try {
+      await thermalPrinter.printLabels(
+        order.items.map((i) => ({ name: i.menu_item_name, qty: i.quantity })),
+        tableName(order),
+        order.id.slice(0, 8).toUpperCase(),
+        restaurant?.name ?? 'Restaurant',
+        32,
+        printerType, savedAddress, printDensity,
+      )
+      toast.success('Labels printed')
+    } catch (e: any) {
+      appLog.error(`Label print failed: ${e?.message ?? e}`)
+      toast.error(e?.message ?? 'Label print failed')
+    }
+    setPrintingLabelOrderId(null)
+  }
 
   const handlePrintLabels = async () => {
     if (!completedReceipt) return
@@ -304,12 +324,11 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
             {orders
               .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
               .map((order) => (
-                <button
+                <div
                   key={order.id}
-                  onClick={() => setSelectedOrder(order)}
-                  className="bg-gray-800 border border-gray-700 hover:border-orange-500 rounded-xl p-4 text-left transition-all group"
+                  className="bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-col"
                 >
-                  {/* Table badge */}
+                  {/* Table badge + time */}
                   <div className="flex items-center justify-between mb-3">
                     <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 text-sm font-bold px-3 py-1 rounded-lg">
                       {tableName(order)}
@@ -339,17 +358,30 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
                   </div>
 
                   {/* Total */}
-                  <div className="border-t border-gray-700 pt-3 flex items-center justify-between">
+                  <div className="border-t border-gray-700 pt-3 flex items-center justify-between mb-3">
                     <span className="text-gray-400 text-sm">Total</span>
                     <span className="text-orange-400 text-xl font-bold">
                       {currencySymbol}{order.total_amount.toFixed(2)}
                     </span>
                   </div>
 
-                  <div className="mt-3 w-full py-2 bg-orange-500/10 group-hover:bg-orange-500 text-orange-400 group-hover:text-white text-sm font-medium rounded-lg text-center transition-all">
-                    Collect Payment
+                  {/* Actions */}
+                  <div className="grid grid-cols-2 gap-2 mt-auto">
+                    <button
+                      onClick={() => handlePrintLabelsForOrder(order)}
+                      disabled={printingLabelOrderId === order.id}
+                      className="py-2 bg-yellow-900/40 hover:bg-yellow-800/60 text-yellow-300 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+                    >
+                      {printingLabelOrderId === order.id ? 'Printing...' : '🏷 Labels'}
+                    </button>
+                    <button
+                      onClick={() => setSelectedOrder(order)}
+                      className="py-2 bg-orange-500/10 hover:bg-orange-500 text-orange-400 hover:text-white text-sm font-medium rounded-lg transition-all"
+                    >
+                      Collect Payment
+                    </button>
                   </div>
-                </button>
+                </div>
               ))}
           </div>
         )}
