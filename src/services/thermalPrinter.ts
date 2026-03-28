@@ -12,6 +12,7 @@
 // ── ESC/POS byte constants ────────────────────────────────────────────────────
 const ESC = 0x1b;
 const GS  = 0x1d;
+const DC2 = 0x12;
 const LF  = 0x0a;
 
 export const ESCPOS = {
@@ -27,6 +28,18 @@ export const ESCPOS = {
   FEED_3:        [ESC, 0x64, 0x03],     // 1B 64 03 — feed 3 lines
 };
 
+/**
+ * Build ESC/POS print density command (DC2 # n).
+ * Supported by most 58mm/80mm Bluetooth thermal printers (Rongta, GOOJPRT, Xprinter clones).
+ * density: 0 = lightest, 7 = darkest. Default 3.
+ * Maps to vendor byte: 0→0x00, 7→0x07 (some use 0-255; we send 0x00..0x07).
+ */
+export function buildDensityCmd(density: number): number[] {
+  const n = Math.max(0, Math.min(7, Math.round(density)));
+  // DC2 # n — print density for most cheap thermal printers
+  return [DC2, 0x23, n];
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ReceiptData {
@@ -38,6 +51,8 @@ export interface ReceiptData {
   items: { name: string; qty: number; price: number }[];
   subtotal?: number;
   tax?: number;
+  discount?: number;
+  discountReason?: string;
   total: number;
   paymentMethod: 'cash' | 'card';
   cashReceived?: number;
@@ -49,6 +64,15 @@ export interface ReceiptData {
 export interface BluetoothDevice {
   name: string;
   address: string;
+}
+
+export interface LabelData {
+  itemName: string;
+  quantity: number;
+  tableRef: string;   // e.g. "Table 5" or "Takeaway"
+  orderRef: string;   // short order ID
+  preparedAt: string; // formatted time string
+  restaurantName?: string;
 }
 
 // ── Receipt byte builder ──────────────────────────────────────────────────────
@@ -117,7 +141,11 @@ export function buildReceiptBytes(data: ReceiptData, paperWidth = 48): Uint8Arra
   // Totals
   if (data.tax !== undefined && data.subtotal !== undefined) {
     add(row(padLine('Subtotal', sym + data.subtotal.toFixed(2))));
-    add(row(padLine('Tax (10%)', sym + data.tax.toFixed(2))));
+    add(row(padLine('Tax (20%)', sym + data.tax.toFixed(2))));
+    if (data.discount && data.discount > 0) {
+      const label = data.discountReason ? `Discount (${data.discountReason.slice(0, 12)})` : 'Discount';
+      add(row(padLine(label, '-' + sym + data.discount.toFixed(2))));
+    }
     add(divider('-'));
   }
 
@@ -140,6 +168,53 @@ export function buildReceiptBytes(data: ReceiptData, paperWidth = 48): Uint8Arra
   add(ESCPOS.FEED_LINE);
 
   // Feed + cut
+  add(ESCPOS.FEED_3, ESCPOS.CUT_PAPER);
+
+  return new Uint8Array(rows.flat());
+}
+
+/**
+ * Build ESC/POS bytes for a compact food preparation label (one label per item).
+ * Designed for 58mm (32-char) paper but works on 80mm too.
+ */
+export function buildLabelBytes(label: LabelData, paperWidth = 32): Uint8Array {
+  const W = paperWidth;
+  const rows: number[][] = [];
+  const add = (...cmds: number[][]) => rows.push(...cmds);
+  const charBytes = (s: string) => Array.from(s).map((c) => c.charCodeAt(0));
+  const row = (s: string) => [...charBytes(s), LF];
+  const centered = (s: string) => {
+    const trimmed = s.slice(0, W);
+    const pad = Math.max(0, Math.floor((W - trimmed.length) / 2));
+    return ' '.repeat(pad) + trimmed;
+  };
+
+  add(ESCPOS.INIT, ESCPOS.ALIGN_CENTER);
+
+  // Restaurant name (small)
+  if (label.restaurantName) {
+    add(row(centered(label.restaurantName.slice(0, W))));
+  }
+
+  // Item name — double height bold, truncated to W chars
+  add(ESCPOS.DOUBLE_HEIGHT, ESCPOS.BOLD_ON);
+  const name = label.itemName.slice(0, W);
+  add(row(centered(name)));
+  add(ESCPOS.NORMAL_SIZE, ESCPOS.BOLD_OFF);
+
+  // Qty line
+  if (label.quantity > 1) {
+    add(ESCPOS.BOLD_ON);
+    add(row(centered(`Qty: ${label.quantity}`)));
+    add(ESCPOS.BOLD_OFF);
+  }
+
+  // Table + order ref
+  add(row(centered(`${label.tableRef}  #${label.orderRef}`)));
+  // Prepared time
+  add(row(centered(label.preparedAt)));
+
+  add(ESCPOS.FEED_LINE);
   add(ESCPOS.FEED_3, ESCPOS.CUT_PAPER);
 
   return new Uint8Array(rows.flat());
@@ -283,8 +358,14 @@ class ThermalPrinterService {
     paperWidth = 48,
     printerType: 'serial' | 'bluetooth' = 'serial',
     savedAddress: string | null = null,
+    printDensity = 3,
   ): Promise<void> {
-    const bytes = buildReceiptBytes(data, paperWidth);
+    const receiptBytes = buildReceiptBytes(data, paperWidth);
+    // Prepend density command before ESC/POS INIT so it takes effect for this print job
+    const densityCmd = new Uint8Array(buildDensityCmd(printDensity));
+    const bytes = new Uint8Array(densityCmd.length + receiptBytes.length);
+    bytes.set(densityCmd, 0);
+    bytes.set(receiptBytes, densityCmd.length);
 
     const citaq = getCitaqPrinter();
     const serialPlugin = printerType === 'serial' ? getSerialPlugin() : null;
@@ -373,6 +454,78 @@ class ThermalPrinterService {
     }
   }
 
+  /**
+   * Print a single food preparation label.
+   * Uses the same printer path logic as printReceipt().
+   */
+  async printLabel(
+    label: LabelData,
+    paperWidth = 32,
+    printerType: 'serial' | 'bluetooth' = 'serial',
+    savedAddress: string | null = null,
+    printDensity = 3,
+  ): Promise<void> {
+    const labelBytes = buildLabelBytes(label, paperWidth);
+    const densityCmd = new Uint8Array(buildDensityCmd(printDensity));
+    const bytes = new Uint8Array(densityCmd.length + labelBytes.length);
+    bytes.set(densityCmd, 0);
+    bytes.set(labelBytes, densityCmd.length);
+
+    const citaq = getCitaqPrinter();
+    const serialPlugin = printerType === 'serial' ? getSerialPlugin() : null;
+    const bt = getBtSerial();
+    const android = isAndroid();
+
+    appLog.info(`printLabel: "${label.itemName}" qty=${label.quantity} type=${printerType}`);
+
+    if (citaq) {
+      const b64 = btoa(String.fromCharCode(...bytes));
+      citaq.print(b64);
+      return;
+    }
+    if (serialPlugin) {
+      await this.printSerial(bytes, serialPlugin);
+      return;
+    }
+    if (bt && printerType === 'bluetooth') {
+      if (!this.connectedAddress && savedAddress) {
+        await this.connect(savedAddress);
+      }
+      if (!this.connectedAddress) throw new Error('No Bluetooth printer connected.');
+      await this.printBluetooth(bytes, bt);
+      return;
+    }
+    if (!android) {
+      // Desktop: just log — labels aren't useful in a browser print dialog
+      appLog.warn('Label print skipped on desktop (no printer plugin)');
+      return;
+    }
+    throw new Error('No printer available for label printing.');
+  }
+
+  /**
+   * Print one label per unique item in an order.
+   * Each unique item gets its own label cut.
+   */
+  async printLabels(
+    items: { name: string; qty: number }[],
+    tableRef: string,
+    orderRef: string,
+    restaurantName: string,
+    paperWidth = 32,
+    printerType: 'serial' | 'bluetooth' = 'serial',
+    savedAddress: string | null = null,
+    printDensity = 3,
+  ): Promise<void> {
+    const preparedAt = new Date().toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: '2-digit' });
+    for (const item of items) {
+      await this.printLabel(
+        { itemName: item.name, quantity: item.qty, tableRef, orderRef, preparedAt, restaurantName },
+        paperWidth, printerType, savedAddress, printDensity,
+      );
+    }
+  }
+
   private printDesktop(data: ReceiptData): void {
     const sym = data.currencySymbol ?? '£';
     const itemRows = data.items
@@ -396,6 +549,7 @@ class ThermalPrinterService {
       <div>Table: ${data.tableName}</div><hr/>
       ${itemRows}<hr/>
       ${data.tax !== undefined ? `<div class="row"><span>Tax</span><span>${sym}${data.tax.toFixed(2)}</span></div>` : ''}
+      ${data.discount && data.discount > 0 ? `<div class="row"><span>Discount${data.discountReason ? ` (${data.discountReason})` : ''}</span><span>-${sym}${data.discount.toFixed(2)}</span></div>` : ''}
       <div class="row bold"><span>TOTAL</span><span>${sym}${data.total.toFixed(2)}</span></div>
       <div class="row"><span>Payment</span><span>${data.paymentMethod.toUpperCase()}</span></div>
       ${data.paymentMethod === 'cash' && data.cashReceived !== undefined

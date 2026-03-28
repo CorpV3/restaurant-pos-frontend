@@ -6,8 +6,8 @@ import { usePrinterStore, type PrinterType } from '../../stores/printerStore'
 export default function PrinterSettings() {
   const {
     printerType, serialPath, savedAddress, savedName,
-    autoPrint, paperWidth,
-    setPrinterType, setSerialPath, setSavedPrinter, setAutoPrint, setPaperWidth,
+    autoPrint, paperWidth, printDensity,
+    setPrinterType, setSerialPath, setSavedPrinter, setAutoPrint, setPaperWidth, setPrintDensity,
   } = usePrinterStore()
 
   const [isAndroid, setIsAndroid] = useState(false)
@@ -84,7 +84,7 @@ export default function PrinterSettings() {
         change: 5,
         currencySymbol: '£',
         footer: 'Test print successful!',
-      }, paperWidth)
+      }, paperWidth, printerType, savedAddress, printDensity)
     } catch (e: any) {
       alert('Print failed: ' + (e?.message ?? e))
     }
@@ -228,6 +228,27 @@ export default function PrinterSettings() {
             <option value={48}>80mm (48 chars)</option>
           </select>
         </label>
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-gray-300 text-sm">Print darkness</span>
+            <span className="text-gray-400 text-xs">
+              {printDensity === 0 ? 'Light' : printDensity <= 2 ? 'Light' : printDensity <= 4 ? 'Medium' : printDensity <= 6 ? 'Dark' : 'Max'} ({printDensity}/7)
+            </span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={7}
+            step={1}
+            value={printDensity}
+            onChange={(e) => setPrintDensity(Number(e.target.value))}
+            className="w-full accent-blue-500"
+          />
+          <div className="flex justify-between text-gray-600 text-xs mt-0.5">
+            <span>Light</span>
+            <span>Dark</span>
+          </div>
+        </div>
       </div>
 
       {/* ── Test print ── */}

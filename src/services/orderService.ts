@@ -10,6 +10,8 @@ export interface CreateOrderPayload {
     unit_price: number
   }[]
   customer_notes?: string
+  discount_amount?: number
+  discount_reason?: string
 }
 
 export interface OrderResponse {
@@ -25,7 +27,9 @@ export interface OrderResponse {
 export async function createOrder(
   cartItems: CartItem[],
   restaurantId: string,
-  tableId: string | null
+  tableId: string | null,
+  discountAmount = 0,
+  discountReason = ''
 ): Promise<OrderResponse> {
   const payload: CreateOrderPayload = {
     restaurant_id: restaurantId,
@@ -35,9 +39,24 @@ export async function createOrder(
       quantity: ci.quantity,
       unit_price: ci.menuItem.price,
     })),
+    discount_amount: discountAmount || undefined,
+    discount_reason: discountReason || undefined,
   }
   const res = await api.post('/api/v1/orders', payload)
   return res.data
+}
+
+export async function refundOrder(
+  orderId: string,
+  refundAmount: number,
+  refundMethod: 'cash' | 'card',
+  refundReason: string
+): Promise<void> {
+  await api.post(`/api/v1/orders/${orderId}/refund`, {
+    refund_amount: refundAmount,
+    refund_method: refundMethod,
+    refund_reason: refundReason || undefined,
+  })
 }
 
 export async function completeOrder(

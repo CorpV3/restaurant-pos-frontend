@@ -16,12 +16,15 @@ interface PrinterState {
   autoPrint: boolean
   // Paper width: 58mm (32 chars), 75mm (42 chars), or 80mm (48 chars)
   paperWidth: 32 | 42 | 48
+  // Print darkness 0 (lightest) – 7 (darkest), ESC/POS DC2 # n
+  printDensity: number
 
   setPrinterType: (t: PrinterType) => void
   setSerialPath: (p: string) => void
   setSavedPrinter: (device: BluetoothDevice | null) => void
   setAutoPrint: (v: boolean) => void
   setPaperWidth: (w: 32 | 42 | 48) => void
+  setPrintDensity: (d: number) => void
 }
 
 export const usePrinterStore = create<PrinterState>()(
@@ -33,6 +36,7 @@ export const usePrinterStore = create<PrinterState>()(
       savedName: null,
       autoPrint: false,
       paperWidth: 48,
+      printDensity: 3,
 
       setPrinterType: (t) => set({ printerType: t }),
       setSerialPath: (p) => set({ serialPath: p }),
@@ -40,6 +44,7 @@ export const usePrinterStore = create<PrinterState>()(
         set({ savedAddress: device?.address ?? null, savedName: device?.name ?? null }),
       setAutoPrint: (v) => set({ autoPrint: v }),
       setPaperWidth: (w) => set({ paperWidth: w }),
+      setPrintDensity: (d) => set({ printDensity: Math.max(0, Math.min(7, d)) }),
     }),
     { name: 'pos-printer-settings' }
   )

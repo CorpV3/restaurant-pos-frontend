@@ -15,6 +15,8 @@ interface PaymentModalProps {
   cartItems?: CartItem[]
   restaurantId?: string
   tableId?: string | null
+  discountAmount?: number
+  discountReason?: string
   // Existing order (from pending receipts):
   existingOrderId?: string
 }
@@ -28,6 +30,8 @@ export default function PaymentModal({
   cartItems,
   restaurantId,
   tableId,
+  discountAmount = 0,
+  discountReason = '',
   existingOrderId,
 }: PaymentModalProps) {
   const [method, setMethod] = useState<'cash' | 'card' | null>(null)
@@ -44,7 +48,7 @@ export default function PaymentModal({
     try {
       let orderId = existingOrderId
       if (!orderId) {
-        const order = await createOrder(cartItems!, restaurantId!, tableId ?? null)
+        const order = await createOrder(cartItems!, restaurantId!, tableId ?? null, discountAmount, discountReason)
         orderId = order.id
         appLog.info(`Cash: order created orderId=${orderId}`)
       }
@@ -72,7 +76,7 @@ export default function PaymentModal({
     try {
       let orderId = existingOrderId
       if (!orderId) {
-        const order = await createOrder(cartItems!, restaurantId!, tableId ?? null)
+        const order = await createOrder(cartItems!, restaurantId!, tableId ?? null, discountAmount, discountReason)
         orderId = order.id
         appLog.info(`Card: order created orderId=${orderId}`)
       }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ShoppingCart } from 'lucide-react'
+import { ShoppingCart, Tag } from 'lucide-react'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useCartStore } from '../../stores/cartStore'
@@ -7,6 +7,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { usePrinterStore } from '../../stores/printerStore'
 import { thermalPrinter } from '../../services/thermalPrinter'
 import { appLog } from '../../services/appLogger'
+import { refundOrder } from '../../services/orderService'
 import PaymentModal from '../payment/PaymentModal'
 import { fetchTables, type Table } from '../../services/tableService'
 
@@ -15,6 +16,8 @@ interface ReceiptSnapshot {
   items: { name: string; qty: number; price: number }[]
   subtotalAmt: number
   vatAmt: number
+  discountAmt: number
+  discountReason: string
   totalAmt: number
   tableName: string
   method: 'cash' | 'card'
@@ -24,16 +27,26 @@ interface ReceiptSnapshot {
 }
 
 export default function Cart() {
-  const { items, removeItem, updateQuantity, clearCart, subtotal, vat, total } =
+  const { items, removeItem, updateQuantity, clearCart, subtotal, vat, total, discountAmount, discountReason, setDiscount, clearDiscount } =
     useCartStore()
   const { restaurant } = useAuthStore()
-  const { paperWidth, printerType, savedAddress } = usePrinterStore()
+  const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
   const [showPayment, setShowPayment] = useState(false)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
   const [tables, setTables] = useState<Table[]>([])
   const [showTablePicker, setShowTablePicker] = useState(false)
   const [completedReceipt, setCompletedReceipt] = useState<ReceiptSnapshot | null>(null)
   const [printing, setPrinting] = useState(false)
+  const [printingLabels, setPrintingLabels] = useState(false)
+  const [showDiscountModal, setShowDiscountModal] = useState(false)
+  const [discountInput, setDiscountInput] = useState('')
+  const [discountType, setDiscountType] = useState<'fixed' | 'percent'>('fixed')
+  const [discountReasonInput, setDiscountReasonInput] = useState('')
+  const [showRefund, setShowRefund] = useState(false)
+  const [refundAmount, setRefundAmount] = useState('')
+  const [refundMethod, setRefundMethod] = useState<'cash' | 'card'>('cash')
+  const [refundReason, setRefundReason] = useState('')
+  const [refunding, setRefunding] = useState(false)
 
   useEffect(() => {
     if (restaurant?.id) {
@@ -56,17 +69,67 @@ export default function Cart() {
         items: receipt.items,
         subtotal: receipt.subtotalAmt,
         tax: receipt.vatAmt,
+        discount: receipt.discountAmt > 0 ? receipt.discountAmt : undefined,
+        discountReason: receipt.discountReason || undefined,
         total: receipt.totalAmt,
         paymentMethod: receipt.method,
         cashReceived: receipt.cashReceived,
         change: receipt.change,
         currencySymbol,
-      }, paperWidth, printerType, savedAddress)
+      }, paperWidth, printerType, savedAddress, printDensity)
     } catch (e: any) {
       appLog.error(`Cart print failed: ${e?.message ?? e}`)
       toast.error(e?.message ?? 'Print failed — check printer connection')
     }
     setPrinting(false)
+  }
+
+  const handlePrintLabels = async (receipt: ReceiptSnapshot) => {
+    setPrintingLabels(true)
+    try {
+      await thermalPrinter.printLabels(
+        receipt.items.map((i) => ({ name: i.name, qty: i.qty })),
+        receipt.tableName,
+        receipt.orderId.slice(0, 8).toUpperCase(),
+        restaurant?.name ?? 'Restaurant',
+        32, // 58mm label width
+        printerType, savedAddress, printDensity,
+      )
+      toast.success('Labels printed')
+    } catch (e: any) {
+      appLog.error(`Label print failed: ${e?.message ?? e}`)
+      toast.error(e?.message ?? 'Label print failed')
+    }
+    setPrintingLabels(false)
+  }
+
+  const applyDiscount = () => {
+    const val = parseFloat(discountInput)
+    if (isNaN(val) || val <= 0) { toast.error('Enter a valid discount value'); return }
+    const baseTotal = subtotal() + vat()
+    const amount = discountType === 'percent' ? baseTotal * (val / 100) : val
+    if (amount >= baseTotal) { toast.error('Discount cannot exceed the total'); return }
+    setDiscount(parseFloat(amount.toFixed(2)), discountReasonInput.trim())
+    setShowDiscountModal(false)
+    setDiscountInput('')
+    setDiscountReasonInput('')
+    toast.success(`Offer applied: -${currencySymbol}${amount.toFixed(2)}`)
+  }
+
+  const handleRefund = async () => {
+    if (!completedReceipt) return
+    const amt = parseFloat(refundAmount)
+    if (isNaN(amt) || amt <= 0) { toast.error('Enter a valid refund amount'); return }
+    if (amt > completedReceipt.totalAmt) { toast.error('Refund cannot exceed total paid'); return }
+    setRefunding(true)
+    try {
+      await refundOrder(completedReceipt.orderId, amt, refundMethod, refundReason)
+      toast.success(`Refund of ${currencySymbol}${amt.toFixed(2)} processed (${refundMethod})`)
+      setShowRefund(false)
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Refund failed')
+    }
+    setRefunding(false)
   }
 
   if (completedReceipt) {
@@ -97,6 +160,12 @@ export default function Cart() {
               <div className="flex justify-between text-sm text-gray-400">
                 <span>VAT (20%)</span><span>{currencySymbol}{r.vatAmt.toFixed(2)}</span>
               </div>
+              {r.discountAmt > 0 && (
+                <div className="flex justify-between text-sm text-green-400">
+                  <span>Offer{r.discountReason ? ` (${r.discountReason})` : ''}</span>
+                  <span>-{currencySymbol}{r.discountAmt.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center mt-1">
                 <span className="text-white font-semibold">Total</span>
                 <span className="text-orange-400 text-xl font-bold">{currencySymbol}{r.totalAmt.toFixed(2)}</span>
@@ -118,17 +187,58 @@ export default function Cart() {
                 </>
               )}
             </div>
-            <div className="flex gap-3">
+
+            {/* Refund section */}
+            {showRefund ? (
+              <div className="bg-gray-600 rounded-xl p-3 mb-3 space-y-2">
+                <p className="text-white text-sm font-semibold">Process Refund</p>
+                <input type="number" value={refundAmount} onChange={e => setRefundAmount(e.target.value)}
+                  className="w-full bg-gray-700 border border-gray-500 rounded-lg px-3 py-2 text-white text-sm"
+                  placeholder={`Amount (max ${currencySymbol}${r.totalAmt.toFixed(2)})`} step="0.01" />
+                <div className="grid grid-cols-2 gap-2">
+                  {(['cash', 'card'] as const).map(m => (
+                    <button key={m} onClick={() => setRefundMethod(m)}
+                      className={`py-1.5 rounded-lg text-sm font-medium ${refundMethod === m ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}>
+                      {m === 'cash' ? '💵 Cash' : '💳 Card'}
+                    </button>
+                  ))}
+                </div>
+                <input value={refundReason} onChange={e => setRefundReason(e.target.value)}
+                  className="w-full bg-gray-700 border border-gray-500 rounded-lg px-3 py-2 text-white text-sm"
+                  placeholder="Reason (optional)" />
+                <div className="flex gap-2">
+                  <button onClick={() => setShowRefund(false)} className="flex-1 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm">Cancel</button>
+                  <button onClick={handleRefund} disabled={refunding}
+                    className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold disabled:opacity-50">
+                    {refunding ? 'Processing...' : 'Confirm Refund'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => { setShowRefund(true); setRefundAmount(r.totalAmt.toFixed(2)) }}
+                className="w-full py-2 mb-2 bg-gray-700 hover:bg-gray-600 text-red-400 text-sm rounded-xl border border-red-900/40">
+                ↩ Refund
+              </button>
+            )}
+
+            <div className="grid grid-cols-3 gap-2">
               <button
                 onClick={() => handlePrint(r)}
                 disabled={printing}
-                className="flex-1 py-2.5 bg-gray-600 hover:bg-gray-500 text-gray-200 text-sm rounded-xl font-medium disabled:opacity-50"
+                className="py-2.5 bg-gray-600 hover:bg-gray-500 text-gray-200 text-sm rounded-xl font-medium disabled:opacity-50"
               >
-                {printing ? 'Printing...' : 'Print'}
+                {printing ? '...' : 'Receipt'}
               </button>
               <button
-                onClick={() => setCompletedReceipt(null)}
-                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-xl font-bold"
+                onClick={() => handlePrintLabels(r)}
+                disabled={printingLabels}
+                className="py-2.5 bg-gray-600 hover:bg-gray-500 text-yellow-300 text-sm rounded-xl font-medium disabled:opacity-50"
+              >
+                {printingLabels ? '...' : 'Labels'}
+              </button>
+              <button
+                onClick={() => { setCompletedReceipt(null); setShowRefund(false) }}
+                className="py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-xl font-bold"
               >
                 Done
               </button>
@@ -262,14 +372,31 @@ export default function Cart() {
             <span>VAT (20%)</span>
             <span>{currencySymbol}{vat().toFixed(2)}</span>
           </div>
+          {discountAmount > 0 && (
+            <div className="flex justify-between text-sm text-green-400">
+              <span className="flex items-center gap-1">
+                <Tag size={12} /> Offer{discountReason ? ` (${discountReason})` : ''}
+                <button onClick={clearDiscount} className="text-gray-500 hover:text-red-400 ml-1 text-xs">✕</button>
+              </span>
+              <span>-{currencySymbol}{discountAmount.toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-base font-bold text-white border-t border-gray-600 pt-2">
             <span>Total</span>
             <span className="text-orange-400">{currencySymbol}{total().toFixed(2)}</span>
           </div>
         </div>
 
-        {/* Pay button */}
-        <div className="flex-shrink-0 px-4 pb-4 pt-2 bg-gray-800">
+        {/* Offer + Pay buttons */}
+        <div className="flex-shrink-0 px-4 pb-4 pt-2 bg-gray-800 space-y-2">
+          {items.length > 0 && (
+            <button
+              onClick={() => setShowDiscountModal(true)}
+              className="w-full py-2 rounded-xl text-sm font-medium border border-green-700/50 text-green-400 hover:bg-green-900/30 flex items-center justify-center gap-2"
+            >
+              <Tag size={14} /> {discountAmount > 0 ? `Offer: -${currencySymbol}${discountAmount.toFixed(2)}` : 'Apply Offer / Discount'}
+            </button>
+          )}
           <button
             onClick={() => setShowPayment(true)}
             disabled={items.length === 0}
@@ -282,6 +409,36 @@ export default function Cart() {
             {items.length > 0 ? `Pay ${currencySymbol}${total().toFixed(2)}` : 'Add items to order'}
           </button>
         </div>
+
+        {/* Discount Modal */}
+        {showDiscountModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-white font-bold text-lg">Apply Offer</h3>
+                <button onClick={() => setShowDiscountModal(false)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {(['fixed', 'percent'] as const).map(t => (
+                  <button key={t} onClick={() => setDiscountType(t)}
+                    className={`py-2 rounded-xl text-sm font-medium ${discountType === t ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300'}`}>
+                    {t === 'fixed' ? `${currencySymbol} Fixed Amount` : '% Percentage'}
+                  </button>
+                ))}
+              </div>
+              <input type="number" value={discountInput} onChange={e => setDiscountInput(e.target.value)}
+                className="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white text-lg focus:outline-none focus:border-green-500"
+                placeholder={discountType === 'fixed' ? '0.00' : '0-100'} step="0.01" min="0" autoFocus />
+              <input value={discountReasonInput} onChange={e => setDiscountReasonInput(e.target.value)}
+                className="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500"
+                placeholder="Reason (e.g. Regular customer, loyalty)" />
+              <div className="flex gap-3">
+                <button onClick={() => setShowDiscountModal(false)} className="flex-1 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600">Cancel</button>
+                <button onClick={applyDiscount} className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold">Apply</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {showPayment && restaurant && (
@@ -292,6 +449,8 @@ export default function Cart() {
           restaurantId={restaurant.id}
           tableId={selectedTable?.id ?? null}
           tableName={selectedTable ? `Table ${selectedTable.table_number}` : 'Takeaway'}
+          discountAmount={discountAmount}
+          discountReason={discountReason}
           onClose={() => setShowPayment(false)}
           onComplete={(method, orderId, cashReceived) => {
             const tName = selectedTable ? `Table ${selectedTable.table_number}` : 'Takeaway'
@@ -300,6 +459,8 @@ export default function Cart() {
               items: items.map((i) => ({ name: i.menuItem.name, qty: i.quantity, price: i.menuItem.price })),
               subtotalAmt: subtotal(),
               vatAmt: vat(),
+              discountAmt: discountAmount,
+              discountReason,
               totalAmt: total(),
               tableName: tName,
               method,
