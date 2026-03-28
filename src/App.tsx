@@ -1,5 +1,7 @@
 import { useEffect, Component, type ReactNode } from 'react'
 import { useAuthStore } from './stores/authStore'
+import { useServerSettings } from './stores/serverSettingsStore'
+import { setApiUrl } from './services/api'
 import POSLayout from './components/layout/POSLayout'
 import LoginPage from './pages/LoginPage'
 
@@ -50,8 +52,11 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 
 function App() {
   const { isAuthenticated, logout, restoreSession } = useAuthStore()
+  const { serverUrl } = useServerSettings()
 
   useEffect(() => {
+    // Restore saved server URL so API calls go to the right server on startup
+    if (serverUrl) setApiUrl(serverUrl)
     restoreSession()
   }, [])
 

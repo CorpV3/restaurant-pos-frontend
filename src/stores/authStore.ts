@@ -27,6 +27,7 @@ interface AuthStore {
   isLoading: boolean
   error: string | null
   login: (username: string, password: string, restaurantCode: string) => Promise<boolean>
+  loginWithToken: (token: string, user: User, restaurant: Restaurant) => void
   logout: () => Promise<void>
   restoreSession: () => void
 }
@@ -78,6 +79,10 @@ export const useAuthStore = create<AuthStore>((set) => ({
   isAuthenticated: false,
   isLoading: false,
   error: null,
+
+  loginWithToken: (token: string, user: User, restaurant: Restaurant) => {
+    set({ user, restaurant, isAuthenticated: true, isLoading: false, error: null })
+  },
 
   login: async (username: string, password: string, restaurantCode: string) => {
     set({ isLoading: true, error: null })
@@ -142,7 +147,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
       try {
         const user = JSON.parse(userStr)
         const restaurant = restaurantStr ? JSON.parse(restaurantStr) : null
-        set({ user, restaurant, isAuthenticated: true })
+        set({ user, restaurant, isAuthenticated: true, error: null })
       } catch { /* ignore */ }
     }
   },
