@@ -4,6 +4,8 @@ import { useServerSettings } from './stores/serverSettingsStore'
 import { setApiUrl } from './services/api'
 import POSLayout from './components/layout/POSLayout'
 import LoginPage from './pages/LoginPage'
+import ChefPanel from './pages/ChefPanel'
+import AdminPanel from './pages/AdminPanel'
 
 // ── Error Boundary — catches React render errors and displays them on screen ──
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -51,7 +53,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 }
 
 function App() {
-  const { isAuthenticated, logout, restoreSession } = useAuthStore()
+  const { isAuthenticated, logout, restoreSession, user } = useAuthStore()
   const { serverUrl } = useServerSettings()
 
   useEffect(() => {
@@ -62,6 +64,16 @@ function App() {
 
   if (!isAuthenticated) {
     return <LoginPage />
+  }
+
+  const role = user?.role?.toLowerCase() ?? ''
+
+  if (role === 'chef') {
+    return <ChefPanel onLogout={logout} />
+  }
+
+  if (role === 'restaurant_admin') {
+    return <AdminPanel onLogout={logout} />
   }
 
   return <POSLayout onLogout={logout} />

@@ -6,7 +6,7 @@ import { fetchPOSStaff, posPasscodeLogin, resolveRestaurantByCode } from '../ser
 import type { POSStaffMember } from '../services/posAuthService'
 
 export default function LoginPage() {
-  const { loginWithToken } = useAuthStore()
+  const { loginWithToken, login } = useAuthStore()
   const settings = useServerSettings()
 
   // ── Setup mode state ──────────────────────────────────────────────────────
@@ -100,6 +100,33 @@ export default function LoginPage() {
       setSetupError(e?.message || 'Could not connect to server — check the URL')
     }
     setSetupLoading(false)
+  }
+
+  // ── Password login state ──────────────────────────────────────────────────
+  const [showPasswordForm, setShowPasswordForm] = useState(false)
+  const [pwUsername, setPwUsername] = useState('')
+  const [pwPassword, setPwPassword] = useState('')
+  const [pwError, setPwError] = useState('')
+  const [pwLoading, setPwLoading] = useState(false)
+
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!pwUsername.trim() || !pwPassword.trim()) {
+      setPwError('Please enter username and password')
+      return
+    }
+    setPwLoading(true)
+    setPwError('')
+    try {
+      const ok = await login(pwUsername.trim(), pwPassword, settings.restaurantCode || '')
+      if (!ok) {
+        // error is set in authStore, but we can also read it
+        setPwError('Invalid credentials or restaurant not found')
+      }
+    } catch (e: any) {
+      setPwError(e?.response?.data?.detail || e?.message || 'Login failed')
+    }
+    setPwLoading(false)
   }
 
   // ── PIN pad logic ─────────────────────────────────────────────────────────
@@ -213,7 +240,58 @@ export default function LoginPage() {
         {selectedStaff && <p className="text-gray-400 text-sm mt-1">Enter your 4-digit PIN</p>}
       </div>
 
-      {!selectedStaff ? (
+      {showPasswordForm ? (
+        /* Password login form */
+        <div className="w-full max-w-xs">
+          <form onSubmit={handlePasswordLogin} className="space-y-4">
+            <div>
+              <label className="text-gray-400 text-sm block mb-1">Username</label>
+              <input
+                type="text"
+                value={pwUsername}
+                onChange={(e) => setPwUsername(e.target.value)}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-orange-500"
+                placeholder="username"
+                disabled={pwLoading}
+                autoComplete="username"
+              />
+            </div>
+            <div>
+              <label className="text-gray-400 text-sm block mb-1">Password</label>
+              <input
+                type="password"
+                value={pwPassword}
+                onChange={(e) => setPwPassword(e.target.value)}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-orange-500"
+                placeholder="••••••••"
+                disabled={pwLoading}
+                autoComplete="current-password"
+              />
+            </div>
+
+            {pwError && (
+              <p className="text-red-400 text-sm text-center">{pwError}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={pwLoading || !pwUsername || !pwPassword}
+              className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-xl font-bold text-base"
+            >
+              {pwLoading ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+
+          <div className="text-center mt-4">
+            <button
+              onClick={() => { setShowPasswordForm(false); setPwError(''); setPwUsername(''); setPwPassword('') }}
+              className="text-gray-500 hover:text-gray-300 text-sm"
+            >
+              ← Back to PIN
+            </button>
+          </div>
+        </div>
+      ) : !selectedStaff ? (
         /* Staff grid */
         <div className="w-full max-w-sm">
           {staffLoading ? (
@@ -289,6 +367,16 @@ export default function LoginPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Login with password link */}
+      {!showPasswordForm && (
+        <button
+          onClick={() => { setShowPasswordForm(true); setSelectedStaff(null); setPin('') }}
+          className="text-gray-500 hover:text-gray-300 text-sm mt-1"
+        >
+          Login with password
+        </button>
       )}
 
       {/* Settings link */}
