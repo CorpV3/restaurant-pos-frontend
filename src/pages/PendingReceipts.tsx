@@ -5,6 +5,7 @@ import { usePrinterStore } from '../stores/printerStore'
 import { thermalPrinter } from '../services/thermalPrinter'
 import { appLog } from '../services/appLogger'
 import { fetchPendingOrders, refundOrder, type PendingOrder } from '../services/orderService'
+import { api } from '../services/api'
 import PaymentModal from '../components/payment/PaymentModal'
 import toast from 'react-hot-toast'
 
@@ -31,6 +32,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
   const [refundMethod, setRefundMethod] = useState<'cash' | 'card'>('cash')
   const [refundReason, setRefundReason] = useState('')
   const [refunding, setRefunding] = useState(false)
+  const [cardRefundStatus, setCardRefundStatus] = useState<'idle' | 'waiting' | 'approved' | 'declined'>('idle')
 
   const currencySymbol = restaurant?.currency_symbol || '£'
 
@@ -72,13 +74,40 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
     }
     setRefunding(true)
     try {
+      if (refundMethod === 'card') {
+        // Card refund: send to physical terminal first
+        setCardRefundStatus('waiting')
+        appLog.info(`Card refund: orderId=${completedReceipt.order.id} amount=${amt}`)
+        const res = await api.post(
+          '/api/v1/payments/card-refund',
+          {
+            restaurant_id: restaurant?.id,
+            order_id: completedReceipt.order.id,
+            amount: amt,
+            lane_id: 9999,
+          },
+          { timeout: 120000 }
+        )
+        if (!res.data.approved) {
+          setCardRefundStatus('declined')
+          toast.error(`Card refund declined: ${res.data.message}`)
+          setRefunding(false)
+          return
+        }
+        setCardRefundStatus('approved')
+        appLog.info(`Card refund approved: txId=${res.data.transaction_id}`)
+      }
+
       await refundOrder(completedReceipt.order.id, amt, refundMethod, refundReason)
       toast.success(`Refund of ${currencySymbol}${amt.toFixed(2)} processed`)
       setShowRefund(false)
+      setCardRefundStatus('idle')
       setRefundAmount('')
       setRefundReason('')
     } catch (e: any) {
+      setCardRefundStatus('idle')
       const msg = e?.response?.data?.detail || e?.message || 'Refund failed'
+      appLog.error(`Refund failed: ${msg}`)
       toast.error(msg)
     } finally {
       setRefunding(false)
@@ -265,10 +294,21 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
                   placeholder="Reason (optional)"
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500"
                 />
+                {/* Card terminal waiting state */}
+                {refundMethod === 'card' && cardRefundStatus === 'waiting' && (
+                  <div className="flex flex-col items-center gap-2 py-3 bg-blue-900/40 rounded-xl border border-blue-700">
+                    <div className="animate-spin w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full" />
+                    <p className="text-blue-300 text-sm font-medium">Tap card on terminal to refund...</p>
+                  </div>
+                )}
+                {refundMethod === 'card' && cardRefundStatus === 'declined' && (
+                  <p className="text-red-400 text-sm text-center">Card refund declined. Try again.</p>
+                )}
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setShowRefund(false)}
-                    className="flex-1 py-2 bg-gray-700 text-gray-300 text-sm rounded-lg"
+                    onClick={() => { setShowRefund(false); setCardRefundStatus('idle') }}
+                    disabled={refunding}
+                    className="flex-1 py-2 bg-gray-700 text-gray-300 text-sm rounded-lg disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -277,7 +317,9 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
                     disabled={refunding || !refundAmount}
                     className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg disabled:opacity-50"
                   >
-                    {refunding ? 'Processing...' : 'Confirm Refund'}
+                    {refunding && refundMethod === 'card' && cardRefundStatus === 'waiting'
+                      ? 'Waiting...'
+                      : refunding ? 'Processing...' : 'Confirm Refund'}
                   </button>
                 </div>
               </div>
