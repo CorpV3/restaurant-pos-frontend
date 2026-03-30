@@ -98,7 +98,9 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
         appLog.info(`Card refund approved: txId=${res.data.transaction_id}`)
       }
 
+      appLog.info(`Refund DB update: orderId=${completedReceipt.order.id} method=${refundMethod} amount=${amt}`)
       await refundOrder(completedReceipt.order.id, amt, refundMethod, refundReason)
+      appLog.info(`Refund success: orderId=${completedReceipt.order.id} amount=${amt} method=${refundMethod}`)
       toast.success(`Refund of ${currencySymbol}${amt.toFixed(2)} processed`)
       setShowRefund(false)
       setCardRefundStatus('idle')
@@ -107,7 +109,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
     } catch (e: any) {
       setCardRefundStatus('idle')
       const msg = e?.response?.data?.detail || e?.message || 'Refund failed'
-      appLog.error(`Refund failed: ${msg}`)
+      appLog.error(`Refund failed: method=${refundMethod} amount=${amt} error=${msg}`)
       toast.error(msg)
     } finally {
       setRefunding(false)

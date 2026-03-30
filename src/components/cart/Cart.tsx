@@ -126,12 +126,16 @@ export default function Cart() {
     if (isNaN(amt) || amt <= 0) { toast.error('Enter a valid refund amount'); return }
     if (amt > completedReceipt.totalAmt) { toast.error('Refund cannot exceed total paid'); return }
     setRefunding(true)
+    appLog.info(`Refund start: orderId=${completedReceipt.orderId} method=${refundMethod} amount=${amt}`)
     try {
       await refundOrder(completedReceipt.orderId, amt, refundMethod, refundReason)
+      appLog.info(`Refund success: orderId=${completedReceipt.orderId} amount=${amt} method=${refundMethod}`)
       toast.success(`Refund of ${currencySymbol}${amt.toFixed(2)} processed (${refundMethod})`)
       setShowRefund(false)
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Refund failed')
+      const msg = e?.response?.data?.detail || e?.message || 'Refund failed'
+      appLog.error(`Refund failed: method=${refundMethod} amount=${amt} error=${msg}`)
+      toast.error(msg)
     }
     setRefunding(false)
   }
