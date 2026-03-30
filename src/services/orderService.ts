@@ -1,9 +1,19 @@
 import { api } from './api'
 import type { CartItem } from '../types'
 
+export interface DeliveryDetails {
+  customerName: string
+  customerPhone: string
+  deliveryAddress: string
+}
+
 export interface CreateOrderPayload {
   restaurant_id: string
   table_id?: string | null
+  order_type?: string
+  customer_name?: string
+  customer_phone?: string
+  delivery_address?: string
   items: {
     menu_item_id: string
     quantity: number
@@ -29,11 +39,18 @@ export async function createOrder(
   restaurantId: string,
   tableId: string | null,
   discountAmount = 0,
-  discountReason = ''
+  discountReason = '',
+  delivery?: DeliveryDetails
 ): Promise<OrderResponse> {
   const payload: CreateOrderPayload = {
     restaurant_id: restaurantId,
     table_id: tableId || null,
+    ...(delivery ? {
+      order_type: 'ONLINE',
+      customer_name: delivery.customerName,
+      customer_phone: delivery.customerPhone,
+      delivery_address: delivery.deliveryAddress,
+    } : {}),
     items: cartItems.map((ci) => ({
       menu_item_id: ci.menuItem.id,
       quantity: ci.quantity,

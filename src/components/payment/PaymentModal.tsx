@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import type { CartItem } from '../../types'
-import { createOrder, completeOrder } from '../../services/orderService'
+import { createOrder, completeOrder, type DeliveryDetails } from '../../services/orderService'
 import { api } from '../../services/api'
 import { appLog } from '../../services/appLogger'
 
@@ -17,6 +17,7 @@ interface PaymentModalProps {
   tableId?: string | null
   discountAmount?: number
   discountReason?: string
+  delivery?: DeliveryDetails
   // Existing order (from pending receipts):
   existingOrderId?: string
 }
@@ -32,6 +33,7 @@ export default function PaymentModal({
   tableId,
   discountAmount = 0,
   discountReason = '',
+  delivery,
   existingOrderId,
 }: PaymentModalProps) {
   const [method, setMethod] = useState<'cash' | 'card' | null>(null)
@@ -48,7 +50,7 @@ export default function PaymentModal({
     try {
       let orderId = existingOrderId
       if (!orderId) {
-        const order = await createOrder(cartItems!, restaurantId!, tableId ?? null, discountAmount, discountReason)
+        const order = await createOrder(cartItems!, restaurantId!, tableId ?? null, discountAmount, discountReason, delivery)
         orderId = order.id
         appLog.info(`Cash: order created orderId=${orderId}`)
       }
@@ -76,7 +78,7 @@ export default function PaymentModal({
     try {
       let orderId = existingOrderId
       if (!orderId) {
-        const order = await createOrder(cartItems!, restaurantId!, tableId ?? null, discountAmount, discountReason)
+        const order = await createOrder(cartItems!, restaurantId!, tableId ?? null, discountAmount, discountReason, delivery)
         orderId = order.id
         appLog.info(`Card: order created orderId=${orderId}`)
       }

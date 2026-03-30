@@ -7,8 +7,9 @@ import { useAuthStore } from '../../stores/authStore'
 import { usePrinterStore } from '../../stores/printerStore'
 import { thermalPrinter } from '../../services/thermalPrinter'
 import { appLog } from '../../services/appLogger'
-import { refundOrder } from '../../services/orderService'
+import { refundOrder, type DeliveryDetails } from '../../services/orderService'
 import PaymentModal from '../payment/PaymentModal'
+import DeliveryModal from './DeliveryModal'
 import { fetchTables, type Table } from '../../services/tableService'
 
 interface ReceiptSnapshot {
@@ -32,6 +33,9 @@ export default function Cart() {
   const { restaurant } = useAuthStore()
   const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
   const [showPayment, setShowPayment] = useState(false)
+  const [orderType, setOrderType] = useState<'dine-in' | 'delivery'>('dine-in')
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false)
+  const [deliveryDetails, setDeliveryDetails] = useState<DeliveryDetails | null>(null)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
   const [tables, setTables] = useState<Table[]>([])
   const [showTablePicker, setShowTablePicker] = useState(false)
@@ -271,8 +275,28 @@ export default function Cart() {
             )}
           </div>
 
-          {/* Table selector */}
-          {tables.length > 0 && (
+          {/* Order type toggle */}
+          <div className="flex gap-1 bg-gray-700 rounded-lg p-1">
+            <button
+              onClick={() => { setOrderType('dine-in'); setDeliveryDetails(null) }}
+              className={`flex-1 py-1.5 rounded text-xs font-medium transition-colors ${
+                orderType === 'dine-in' ? 'bg-gray-900 text-white' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              🍽 Dine-in
+            </button>
+            <button
+              onClick={() => setOrderType('delivery')}
+              className={`flex-1 py-1.5 rounded text-xs font-medium transition-colors ${
+                orderType === 'delivery' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              🛵 Delivery
+            </button>
+          </div>
+
+          {/* Table selector — only for dine-in */}
+          {orderType === 'dine-in' && tables.length > 0 && (
             <div>
               <button
                 onClick={() => setShowTablePicker((v) => !v)}
@@ -316,6 +340,28 @@ export default function Cart() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Delivery details summary */}
+          {orderType === 'delivery' && (
+            <button
+              onClick={() => setShowDeliveryModal(true)}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm border transition-colors ${
+                deliveryDetails
+                  ? 'bg-orange-500/20 border-orange-500 text-orange-300'
+                  : 'bg-gray-700 border-orange-600/50 text-orange-400 hover:border-orange-500 border-dashed'
+              }`}
+            >
+              <span className="text-xs uppercase tracking-wide text-gray-500 block">Customer</span>
+              {deliveryDetails ? (
+                <>
+                  <span className="font-medium text-white">{deliveryDetails.customerName}</span>
+                  <span className="text-gray-400 text-xs block truncate">{deliveryDetails.deliveryAddress}</span>
+                </>
+              ) : (
+                <span className="font-medium">Tap to enter customer details →</span>
+              )}
+            </button>
           )}
         </div>
 
@@ -398,7 +444,13 @@ export default function Cart() {
             </button>
           )}
           <button
-            onClick={() => setShowPayment(true)}
+            onClick={() => {
+              if (orderType === 'delivery' && !deliveryDetails) {
+                setShowDeliveryModal(true)
+              } else {
+                setShowPayment(true)
+              }
+            }}
             disabled={items.length === 0}
             className={`w-full py-3 rounded-xl text-base font-bold transition-all ${
               items.length > 0
@@ -441,19 +493,33 @@ export default function Cart() {
         )}
       </div>
 
+      {showDeliveryModal && (
+        <DeliveryModal
+          onConfirm={(details) => { setDeliveryDetails(details); setShowDeliveryModal(false); setShowPayment(true) }}
+          onCancel={() => setShowDeliveryModal(false)}
+        />
+      )}
+
       {showPayment && restaurant && (
         <PaymentModal
           total={total()}
           currencySymbol={currencySymbol}
           cartItems={items}
           restaurantId={restaurant.id}
-          tableId={selectedTable?.id ?? null}
-          tableName={selectedTable ? `Table ${selectedTable.table_number}` : 'Takeaway'}
+          tableId={orderType === 'delivery' ? null : (selectedTable?.id ?? null)}
+          tableName={
+            orderType === 'delivery'
+              ? (deliveryDetails ? `${deliveryDetails.customerName} (Delivery)` : 'Delivery')
+              : (selectedTable ? `Table ${selectedTable.table_number}` : 'Takeaway')
+          }
           discountAmount={discountAmount}
           discountReason={discountReason}
+          delivery={orderType === 'delivery' ? deliveryDetails ?? undefined : undefined}
           onClose={() => setShowPayment(false)}
           onComplete={(method, orderId, cashReceived) => {
-            const tName = selectedTable ? `Table ${selectedTable.table_number}` : 'Takeaway'
+            const tName = orderType === 'delivery'
+              ? (deliveryDetails ? `${deliveryDetails.customerName} (Delivery)` : 'Delivery')
+              : (selectedTable ? `Table ${selectedTable.table_number}` : 'Takeaway')
             const snap: ReceiptSnapshot = {
               orderId,
               items: items.map((i) => ({ name: i.menuItem.name, qty: i.quantity, price: i.menuItem.price })),
@@ -470,6 +536,8 @@ export default function Cart() {
             }
             clearCart()
             setSelectedTable(null)
+            setDeliveryDetails(null)
+            setOrderType('dine-in')
             setShowPayment(false)
             setCompletedReceipt(snap)
           }}
