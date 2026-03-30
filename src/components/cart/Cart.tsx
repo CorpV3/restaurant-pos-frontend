@@ -370,7 +370,7 @@ export default function Cart() {
         </div>
 
         {/* Items — fixed max height so totals+pay always visible below */}
-        <div className="max-h-[45vh] overflow-y-auto p-3">
+        <div className="max-h-[22vh] overflow-y-auto p-3">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-gray-500">
               <ShoppingCart size={40} className="mb-2 text-gray-600" />

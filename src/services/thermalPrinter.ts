@@ -632,7 +632,7 @@ class ThermalPrinterService {
     for (let i = 0; i < copies; i++) {
       if (citaq) {
         const b64 = btoa(String.fromCharCode(...bytes));
-        citaq.printRawBase64(b64);
+        citaq.print(b64);
       } else if (android && serialPlugin && savedAddress) {
         await serialPlugin.openSerial({ devicePath: savedAddress, baudRate: 9600 });
         await serialPlugin.writeSerial({ data: btoa(String.fromCharCode(...bytes)) });
