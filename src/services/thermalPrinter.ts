@@ -75,6 +75,88 @@ export interface LabelData {
   restaurantName?: string;
 }
 
+export interface PrepLabelData {
+  itemName: string;
+  itemCode: string;      // e.g. "CHK-2803-001"
+  preparedAt: string;    // "30/03/2026 14:25"
+  useBy: string;         // "31/03/2026 14:25"
+  allergens: string[];   // e.g. ["nuts", "dairy"]
+  preparedBy?: string;   // staff name
+  restaurantName?: string;
+}
+
+export function buildPrepLabelBytes(label: PrepLabelData, paperWidth = 32): Uint8Array {
+  const W = paperWidth;
+  const rows: number[][] = [];
+  const add = (...cmds: number[][]) => rows.push(...cmds);
+  const charBytes = (s: string) => Array.from(s).map((c) => c.charCodeAt(0));
+  const row = (s: string) => [...charBytes(s), LF];
+  const centered = (s: string) => {
+    const t = s.slice(0, W);
+    const pad = Math.max(0, Math.floor((W - t.length) / 2));
+    return ' '.repeat(pad) + t;
+  };
+  const leftRight = (left: string, right: string) => {
+    const l = left.slice(0, W - right.length - 1);
+    return l + ' '.repeat(W - l.length - right.length) + right;
+  };
+
+  add(ESCPOS.INIT, ESCPOS.ALIGN_CENTER);
+
+  // Restaurant name
+  if (label.restaurantName) {
+    add(row(centered(label.restaurantName.slice(0, W))));
+  }
+
+  // Item name — bold double height
+  add(ESCPOS.DOUBLE_HEIGHT, ESCPOS.BOLD_ON);
+  add(row(centered(label.itemName.slice(0, W))));
+  add(ESCPOS.NORMAL_SIZE, ESCPOS.BOLD_OFF);
+
+  // Item code
+  add(ESCPOS.BOLD_ON);
+  add(row(centered(label.itemCode)));
+  add(ESCPOS.BOLD_OFF);
+
+  add(ESCPOS.ALIGN_LEFT);
+  const divider = (c = '-') => row(c.repeat(W));
+  add(divider());
+
+  // Prepared at
+  add(row(leftRight('Prep:', label.preparedAt)));
+  // Use by — bold
+  add(ESCPOS.BOLD_ON);
+  add(row(leftRight('Use By:', label.useBy)));
+  add(ESCPOS.BOLD_OFF);
+
+  // Allergens
+  if (label.allergens.length > 0) {
+    add(divider());
+    const allergenStr = ('Allergens: ' + label.allergens.join(', ')).slice(0, W);
+    // Word wrap if too long
+    if (allergenStr.length <= W) {
+      add(row(allergenStr));
+    } else {
+      add(row('Allergens:'));
+      const a = label.allergens.join(', ').slice(0, W * 2);
+      for (let i = 0; i < a.length; i += W) {
+        add(row(a.slice(i, i + W)));
+      }
+    }
+  }
+
+  // Prepared by
+  if (label.preparedBy) {
+    add(divider());
+    add(row(`By: ${label.preparedBy}`.slice(0, W)));
+  }
+
+  add(ESCPOS.FEED_LINE);
+  add(ESCPOS.FEED_3, ESCPOS.CUT_PAPER);
+
+  return new Uint8Array(rows.flat());
+}
+
 // ── Receipt byte builder ──────────────────────────────────────────────────────
 
 export function buildReceiptBytes(data: ReceiptData, paperWidth = 48): Uint8Array {
@@ -523,6 +605,46 @@ class ThermalPrinterService {
         { itemName: item.name, quantity: item.qty, tableRef, orderRef, preparedAt, restaurantName },
         paperWidth, printerType, savedAddress, printDensity,
       );
+    }
+  }
+
+  async printPrepLabel(
+    label: PrepLabelData,
+    copies = 1,
+    paperWidth = 32,
+    printerType: 'serial' | 'bluetooth' = 'serial',
+    savedAddress: string | null = null,
+    printDensity = 3,
+  ): Promise<void> {
+    const labelBytes = buildPrepLabelBytes(label, paperWidth);
+    const densityCmd = new Uint8Array(buildDensityCmd(printDensity));
+    const bytes = new Uint8Array(densityCmd.length + labelBytes.length);
+    bytes.set(densityCmd, 0);
+    bytes.set(labelBytes, densityCmd.length);
+
+    const citaq = getCitaqPrinter();
+    const serialPlugin = printerType === 'serial' ? getSerialPlugin() : null;
+    const bt = getBtSerial();
+    const android = isAndroid();
+
+    appLog.info(`printPrepLabel: "${label.itemName}" code=${label.itemCode} copies=${copies}`);
+
+    for (let i = 0; i < copies; i++) {
+      if (citaq) {
+        const b64 = btoa(String.fromCharCode(...bytes));
+        citaq.printRawBase64(b64);
+      } else if (android && serialPlugin && savedAddress) {
+        await serialPlugin.openSerial({ devicePath: savedAddress, baudRate: 9600 });
+        await serialPlugin.writeSerial({ data: btoa(String.fromCharCode(...bytes)) });
+      } else if (android && bt && savedAddress) {
+        await bt.connect(savedAddress);
+        await bt.write({ data: Array.from(bytes) });
+      } else if (!android && printerType === 'serial' && serialPlugin && savedAddress) {
+        await serialPlugin.openSerial({ devicePath: savedAddress, baudRate: 9600 });
+        await serialPlugin.writeSerial({ data: btoa(String.fromCharCode(...bytes)) });
+      } else {
+        throw new Error('No printer configured');
+      }
     }
   }
 
