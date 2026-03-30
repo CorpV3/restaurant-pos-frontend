@@ -4,6 +4,7 @@ import { usePrinterStore } from '../stores/printerStore'
 import { thermalPrinter, type PrepLabelData } from '../services/thermalPrinter'
 import { appLog } from '../services/appLogger'
 import { api } from '../services/api'
+import PrinterSettings from '../components/settings/PrinterSettings'
 import toast from 'react-hot-toast'
 import { format, isPast } from 'date-fns'
 
@@ -28,6 +29,7 @@ export default function PrepLabelsPage() {
   const [selectedItem, setSelectedItem] = useState<PreparedFoodItem | null>(null)
   const [copies, setCopies] = useState(1)
   const [printing, setPrinting] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
     if (!restaurant?.id) return
@@ -84,8 +86,25 @@ export default function PrepLabelsPage() {
     <div className="flex-1 flex flex-col bg-gray-900 overflow-hidden">
       {/* Header */}
       <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-gray-700">
-        <h2 className="text-white font-bold text-lg">Prep Labels</h2>
-        <p className="text-gray-400 text-xs mt-0.5">Print labels for prepared food items from inventory</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-white font-bold text-lg">Prep Labels</h2>
+            <p className="text-gray-400 text-xs mt-0.5">Print labels for prepared food items from inventory</p>
+          </div>
+          <button
+            onClick={() => setShowSettings((s) => !s)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              showSettings ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            ⚙ Printer
+          </button>
+        </div>
+        {showSettings && (
+          <div className="mt-3 border-t border-gray-700 pt-3">
+            <PrinterSettings />
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col min-h-0 p-4 gap-4">
