@@ -71,10 +71,12 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
     if (!restaurant?.id) return
     try {
       const res = await api.get(`/api/v1/restaurants/${restaurant.id}/orders`, {
-        params: { status: 'pending', limit: 50 },
+        params: { limit: 100 },
       })
       const raw: any[] = Array.isArray(res.data) ? res.data : (res.data?.orders ?? [])
+      const ACTIVE = ['pending', 'confirmed', 'preparing', 'ready']
       const mapped: ChefOrder[] = raw
+        .filter((o) => ACTIVE.includes(o.status))
         .map((o) => ({
           id: o.id,
           order_number: o.order_number,
@@ -166,13 +168,44 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
     if (tab === 'history') fetchHistory()
   }, [tab, fetchHistory])
 
-  const markReady = async (orderId: string) => {
+  const NEXT_STATUS: Record<string, string> = {
+    pending: 'confirmed',
+    confirmed: 'preparing',
+    preparing: 'ready',
+    ready: 'served',
+  }
+  const BTN_LABEL: Record<string, string> = {
+    pending: 'Confirm',
+    confirmed: 'Start Preparing',
+    preparing: 'Mark Ready',
+    ready: 'Mark Served',
+  }
+  const BTN_COLOR: Record<string, string> = {
+    pending: 'bg-orange-500 hover:bg-orange-600',
+    confirmed: 'bg-blue-600 hover:bg-blue-700',
+    preparing: 'bg-green-600 hover:bg-green-700',
+    ready: 'bg-purple-600 hover:bg-purple-700',
+  }
+  const STATUS_BADGE: Record<string, string> = {
+    pending: 'bg-yellow-100 text-yellow-700',
+    confirmed: 'bg-orange-100 text-orange-700',
+    preparing: 'bg-blue-100 text-blue-700',
+    ready: 'bg-green-100 text-green-700',
+  }
+
+  const advanceStatus = async (orderId: string, currentStatus: string) => {
+    const nextStatus = NEXT_STATUS[currentStatus]
+    if (!nextStatus) return
     setMarkingReady((prev) => new Set(prev).add(orderId))
     try {
-      await api.patch(`/api/v1/orders/${orderId}/status`, { status: 'ready' })
-      setOrders((prev) => prev.filter((o) => o.id !== orderId))
+      await api.patch(`/api/v1/orders/${orderId}/status`, { status: nextStatus })
+      if (nextStatus === 'served') {
+        setOrders((prev) => prev.filter((o) => o.id !== orderId))
+      } else {
+        setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status: nextStatus } : o))
+      }
     } catch (e: any) {
-      alert('Failed to mark ready: ' + (e?.response?.data?.detail || e?.message || 'Unknown error'))
+      alert('Failed to update: ' + (e?.response?.data?.detail || e?.message || 'Unknown error'))
     } finally {
       setMarkingReady((prev) => {
         const next = new Set(prev)
@@ -274,7 +307,12 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
                       <p className="text-gray-900 font-bold font-mono text-sm">
                         {order.order_number || `#${order.id.slice(0, 8).toUpperCase()}`}
                       </p>
-                      <p className="text-gray-500 text-xs mt-0.5">{tableName(order)}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <p className="text-gray-500 text-xs">{tableName(order)}</p>
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-semibold capitalize ${STATUS_BADGE[order.status] || 'bg-gray-100 text-gray-600'}`}>
+                          {order.status}
+                        </span>
+                      </div>
                     </div>
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${ageCls}`}>
                       {timeSince(order.created_at)}
@@ -303,14 +341,14 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
                     )}
                   </div>
 
-                  {/* Mark Ready button */}
+                  {/* Advance status button */}
                   <div className="p-3 pt-0">
                     <button
-                      onClick={() => markReady(order.id)}
+                      onClick={() => advanceStatus(order.id, order.status)}
                       disabled={markingReady.has(order.id)}
-                      className="w-full py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-sm font-semibold transition-colors"
+                      className={`w-full py-2.5 ${BTN_COLOR[order.status] || 'bg-gray-500'} disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-sm font-semibold transition-colors`}
                     >
-                      {markingReady.has(order.id) ? 'Marking...' : 'Mark Ready'}
+                      {markingReady.has(order.id) ? 'Updating...' : BTN_LABEL[order.status] || 'Advance'}
                     </button>
                   </div>
                 </div>

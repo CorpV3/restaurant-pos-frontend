@@ -6,7 +6,19 @@ import { thermalPrinter, type PrepLabelData } from '../services/thermalPrinter'
 import { appLog } from '../services/appLogger'
 import PrinterSettings from '../components/settings/PrinterSettings'
 import toast from 'react-hot-toast'
-import { format, isPast } from 'date-fns'
+import { format, isPast, isValid } from 'date-fns'
+
+function safeFormat(dateStr: string | null | undefined, fmt: string): string {
+  if (!dateStr) return '—'
+  const d = new Date(dateStr)
+  return isValid(d) ? format(d, fmt) : '—'
+}
+
+function safeIsPast(dateStr: string | null | undefined): boolean {
+  if (!dateStr) return false
+  const d = new Date(dateStr)
+  return isValid(d) ? isPast(d) : false
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -16,7 +28,8 @@ interface Ingredient {
   quantity: number
   unit: string
   category: string
-  reorder_level: number
+  min_threshold: number  // API field name
+  reorder_level?: number // kept for compat
 }
 
 interface PreparedFood {
@@ -46,7 +59,7 @@ function genBatch() {
 
 function StatusBadge({ item }: { item: PreparedFood }) {
   if (item.status === 'consumed') return <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">Consumed</span>
-  if (item.status === 'expired' || isPast(new Date(item.expires_at))) return <span className="text-xs px-2 py-0.5 rounded-full bg-red-900 text-red-300">Expired</span>
+  if (item.status === 'expired' || safeIsPast(item.expires_at)) return <span className="text-xs px-2 py-0.5 rounded-full bg-red-900 text-red-300">Expired</span>
   if (item.status === 'offer') return <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900 text-blue-300">Offer {item.offer_discount ? `${item.offer_discount}%` : ''}</span>
   return <span className="text-xs px-2 py-0.5 rounded-full bg-green-900 text-green-300">Active</span>
 }
@@ -91,7 +104,12 @@ export default function InventoryPage() {
       ])
       setIngredients(Array.isArray(ingRes.data) ? ingRes.data : [])
       setPrepared(Array.isArray(prepRes.data) ? prepRes.data : [])
-      setAlerts(alertRes.data || { low_stock: [], expiring_soon: [], expired: [] })
+      const ad = alertRes.data || {}
+      setAlerts({
+        low_stock: Array.isArray(ad.low_stock) ? ad.low_stock : [],
+        expiring_soon: Array.isArray(ad.expiring_soon) ? ad.expiring_soon : [],
+        expired: Array.isArray(ad.expired) ? ad.expired : [],
+      })
     } catch {
       toast.error('Failed to load inventory')
     } finally {
@@ -109,8 +127,8 @@ export default function InventoryPage() {
       const label: PrepLabelData = {
         itemName: item.name,
         itemCode: item.batch_number || `BAT-${item.id.slice(0, 8).toUpperCase()}`,
-        preparedAt: format(new Date(item.prepared_at), 'dd/MM/yy HH:mm'),
-        useBy: format(new Date(item.expires_at), 'dd/MM/yy HH:mm'),
+        preparedAt: safeFormat(item.prepared_at, 'dd/MM/yy HH:mm'),
+        useBy: safeFormat(item.expires_at, 'dd/MM/yy HH:mm'),
         allergens: [],
         preparedBy: user?.full_name || user?.username,
         restaurantName: restaurant?.name,
@@ -278,18 +296,18 @@ function IngredientsTab({ items, onAdd, onEdit, onAdjust, onDelete }: {
         {filtered.length === 0 ? (
           <p className="text-gray-500 text-sm text-center py-8">No ingredients found</p>
         ) : filtered.map(item => (
-          <div key={item.id} className={`bg-gray-800 rounded-xl p-3 border ${item.quantity <= item.reorder_level ? 'border-red-700' : 'border-gray-700'}`}>
+          <div key={item.id} className={`bg-gray-800 rounded-xl p-3 border ${item.quantity <= (item.min_threshold ?? item.reorder_level ?? 0) ? 'border-red-700' : 'border-gray-700'}`}>
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-white font-medium text-sm truncate">{item.name}</span>
                   <span className="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300 capitalize flex-shrink-0">{item.category}</span>
-                  {item.quantity <= item.reorder_level && (
+                  {item.quantity <= (item.min_threshold ?? item.reorder_level ?? 0) && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-red-900 text-red-300 flex-shrink-0">Low</span>
                   )}
                 </div>
                 <p className="text-gray-400 text-xs mt-0.5">
-                  {item.quantity} {item.unit} &nbsp;·&nbsp; Reorder at {item.reorder_level} {item.unit}
+                  {item.quantity} {item.unit} &nbsp;·&nbsp; Reorder at {item.min_threshold ?? item.reorder_level ?? 0} {item.unit}
                 </p>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0 ml-2">
@@ -364,8 +382,8 @@ function PreparedTab({ items, printTarget, printCopies, printing, showPrinterSet
               <div className="flex items-center gap-3 mt-1">
                 <span className="text-gray-400 text-xs">Batch: {item.batch_number || '—'}</span>
                 <span className="text-gray-400 text-xs">Qty: {item.quantity}</span>
-                <span className={`text-xs ${isPast(new Date(item.expires_at)) ? 'text-red-400' : 'text-gray-400'}`}>
-                  Exp: {format(new Date(item.expires_at), 'dd/MM/yy HH:mm')}
+                <span className={`text-xs ${safeIsPast(item.expires_at) ? 'text-red-400' : 'text-gray-400'}`}>
+                  Exp: {safeFormat(item.expires_at, 'dd/MM/yy HH:mm')}
                 </span>
               </div>
             </div>
@@ -381,12 +399,12 @@ function PreparedTab({ items, printTarget, printCopies, printing, showPrinterSet
                   <div className="border-t border-gray-700 pt-1.5 mt-1.5 space-y-0.5">
                     <div className="flex justify-between">
                       <span className="text-gray-400">Prep:</span>
-                      <span className="text-white">{format(new Date(item.prepared_at), 'dd/MM/yy HH:mm')}</span>
+                      <span className="text-white">{safeFormat(item.prepared_at, 'dd/MM/yy HH:mm')}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className={isPast(new Date(item.expires_at)) ? 'text-red-400 font-bold' : 'text-orange-400 font-bold'}>Use By:</span>
-                      <span className={isPast(new Date(item.expires_at)) ? 'text-red-400 font-bold' : 'text-orange-400 font-bold'}>
-                        {format(new Date(item.expires_at), 'dd/MM/yy HH:mm')}
+                      <span className={safeIsPast(item.expires_at) ? 'text-red-400 font-bold' : 'text-orange-400 font-bold'}>Use By:</span>
+                      <span className={safeIsPast(item.expires_at) ? 'text-red-400 font-bold' : 'text-orange-400 font-bold'}>
+                        {safeFormat(item.expires_at, 'dd/MM/yy HH:mm')}
                       </span>
                     </div>
                   </div>
@@ -437,7 +455,7 @@ function AlertsTab({ alerts, onRefresh }: { alerts: { low_stock: Ingredient[]; e
             {alerts.low_stock.map((i: Ingredient) => (
               <div key={i.id} className="bg-orange-900/20 border border-orange-800/50 rounded-xl p-3">
                 <p className="text-white text-sm font-medium">{i.name}</p>
-                <p className="text-orange-300 text-xs">{i.quantity} {i.unit} remaining (reorder at {i.reorder_level})</p>
+                <p className="text-orange-300 text-xs">{i.quantity} {i.unit} remaining (reorder at {i.min_threshold ?? i.reorder_level ?? 0})</p>
               </div>
             ))}
           </div>
@@ -451,7 +469,7 @@ function AlertsTab({ alerts, onRefresh }: { alerts: { low_stock: Ingredient[]; e
             {alerts.expiring_soon.map((i: PreparedFood) => (
               <div key={i.id} className="bg-yellow-900/20 border border-yellow-800/50 rounded-xl p-3">
                 <p className="text-white text-sm font-medium">{i.name}</p>
-                <p className="text-yellow-300 text-xs">Expires {format(new Date(i.expires_at), 'dd/MM/yy HH:mm')} · Batch: {i.batch_number || '—'}</p>
+                <p className="text-yellow-300 text-xs">Expires {safeFormat(i.expires_at, 'dd/MM/yy HH:mm')} · Batch: {i.batch_number || '—'}</p>
               </div>
             ))}
           </div>
@@ -465,7 +483,7 @@ function AlertsTab({ alerts, onRefresh }: { alerts: { low_stock: Ingredient[]; e
             {alerts.expired.map((i: PreparedFood) => (
               <div key={i.id} className="bg-red-900/20 border border-red-800/50 rounded-xl p-3">
                 <p className="text-white text-sm font-medium">{i.name}</p>
-                <p className="text-red-300 text-xs">Expired {format(new Date(i.expires_at), 'dd/MM/yy HH:mm')} · Batch: {i.batch_number || '—'}</p>
+                <p className="text-red-300 text-xs">Expired {safeFormat(i.expires_at, 'dd/MM/yy HH:mm')} · Batch: {i.batch_number || '—'}</p>
               </div>
             ))}
           </div>
@@ -494,7 +512,7 @@ function IngredientModal({ item, onClose, onSave }: {
     quantity: item?.quantity ?? 0,
     unit: item?.unit || 'pieces',
     category: item?.category || 'other',
-    reorder_level: item?.reorder_level ?? 0,
+    min_threshold: item?.min_threshold ?? item?.reorder_level ?? 0,
   })
   const [saving, setSaving] = useState(false)
 
@@ -519,7 +537,7 @@ function IngredientModal({ item, onClose, onSave }: {
             <select value={form.category} onChange={e => field('category', e.target.value)} className="bg-gray-700 border border-gray-600 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500">
               {CATEGORIES.map(c => <option key={c} value={c} className="capitalize">{c}</option>)}
             </select>
-            <input type="number" value={form.reorder_level} onChange={e => field('reorder_level', parseFloat(e.target.value) || 0)} placeholder="Reorder level" className="bg-gray-700 border border-gray-600 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500" />
+            <input type="number" value={form.min_threshold} onChange={e => field('min_threshold', parseFloat(e.target.value) || 0)} placeholder="Reorder level" className="bg-gray-700 border border-gray-600 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500" />
           </div>
         </div>
         <div className="flex gap-3 px-5 pb-5">
