@@ -245,7 +245,7 @@ export default function InventoryPage() {
           onClose={() => setShowAdjust(false)}
           onSave={async (qty, reason) => {
             try {
-              await api.post(`/api/v1/restaurants/${rid}/inventory/items/${adjustTarget.id}/adjust`, { quantity_change: qty, reason })
+              await api.post(`/api/v1/restaurants/${rid}/inventory/items/${adjustTarget.id}/adjust`, { delta: qty, reason })
               toast.success('Stock adjusted'); setShowAdjust(false); fetchAll()
             } catch { toast.error('Failed to adjust') }
           }}
