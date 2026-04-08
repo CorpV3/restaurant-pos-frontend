@@ -3,6 +3,8 @@ import MenuGrid from '../menu/MenuGrid'
 import Cart from '../cart/Cart'
 import CategoryBar from '../menu/CategoryBar'
 import StatusBar from '../common/StatusBar'
+import AnnouncementTicker from '../common/AnnouncementTicker'
+import UpdateBanner from '../common/UpdateBanner'
 import ReportsPage from '../../pages/ReportsPage'
 import PendingReceipts from '../../pages/PendingReceipts'
 import LogsPage from '../../pages/LogsPage'
@@ -28,6 +30,8 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
 
   return (
     <div className="h-screen h-[100dvh] flex flex-col bg-gray-900 overflow-hidden">
+      <UpdateBanner />
+      <AnnouncementTicker />
       <StatusBar onLogout={onLogout} />
 
       {/* Tab bar */}
