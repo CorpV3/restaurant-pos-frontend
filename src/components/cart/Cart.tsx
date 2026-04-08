@@ -17,6 +17,8 @@ interface ReceiptSnapshot {
   items: { name: string; qty: number; price: number }[]
   subtotalAmt: number
   vatAmt: number
+  vatRate: number
+  vatEnabled: boolean
   discountAmt: number
   discountReason: string
   totalAmt: number
@@ -28,7 +30,7 @@ interface ReceiptSnapshot {
 }
 
 export default function Cart() {
-  const { items, removeItem, updateQuantity, clearCart, subtotal, vat, total, discountAmount, discountReason, setDiscount, clearDiscount } =
+  const { items, removeItem, updateQuantity, clearCart, subtotal, vat, total, discountAmount, discountReason, setDiscount, clearDiscount, vatEnabled, vatRate, setVat } =
     useCartStore()
   const { restaurant } = useAuthStore()
   const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
@@ -52,6 +54,15 @@ export default function Cart() {
   const [refundReason, setRefundReason] = useState('')
   const [refunding, setRefunding] = useState(false)
 
+  // Sync VAT settings from restaurant whenever restaurant data changes
+  useEffect(() => {
+    if (restaurant) {
+      const enabled = restaurant.vat_enabled ?? true
+      const rate = restaurant.vat_rate ?? 20.0
+      setVat(enabled, rate)
+    }
+  }, [restaurant?.id, restaurant?.vat_enabled, restaurant?.vat_rate])
+
   useEffect(() => {
     if (restaurant?.id) {
       fetchTables(restaurant.id)
@@ -61,6 +72,10 @@ export default function Cart() {
   }, [restaurant?.id])
 
   const currencySymbol = restaurant?.currency_symbol || '£'
+
+  const vatLabel = vatEnabled
+    ? `VAT (${(vatRate * 100).toFixed(0)}%)`
+    : 'VAT (N/A)'
 
   const handlePrint = async (receipt: ReceiptSnapshot) => {
     setPrinting(true)
@@ -165,9 +180,12 @@ export default function Cart() {
               <div className="flex justify-between text-sm text-gray-400">
                 <span>Subtotal</span><span>{currencySymbol}{r.subtotalAmt.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm text-gray-400">
-                <span>VAT (20%)</span><span>{currencySymbol}{r.vatAmt.toFixed(2)}</span>
-              </div>
+              {r.vatEnabled && (
+                <div className="flex justify-between text-sm text-gray-400">
+                  <span>VAT ({(r.vatRate * 100).toFixed(0)}%)</span>
+                  <span>{currencySymbol}{r.vatAmt.toFixed(2)}</span>
+                </div>
+              )}
               {r.discountAmt > 0 && (
                 <div className="flex justify-between text-sm text-green-400">
                   <span>Offer{r.discountReason ? ` (${r.discountReason})` : ''}</span>
@@ -379,35 +397,56 @@ export default function Cart() {
             </div>
           ) : (
             <div className="space-y-2">
-              {items.map((item) => (
-                <div key={item.menuItem.id} className="bg-gray-700 rounded-lg p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-medium truncate">
-                        {item.menuItem.icon} {item.menuItem.name}
-                      </p>
-                      <p className="text-orange-400 text-sm">
-                        {currencySymbol}{(item.menuItem.price * item.quantity).toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => updateQuantity(item.menuItem.id, item.quantity - 1)}
-                        className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
-                      >-</button>
-                      <span className="text-white w-5 text-center text-sm">{item.quantity}</span>
-                      <button
-                        onClick={() => updateQuantity(item.menuItem.id, item.quantity + 1)}
-                        className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
-                      >+</button>
-                      <button
-                        onClick={() => removeItem(item.menuItem.id)}
-                        className="w-7 h-7 rounded bg-red-600/30 text-red-400 flex items-center justify-center hover:bg-red-600/50 ml-1"
-                      >×</button>
+              {items.map((item) => {
+                const key = item.cartKey ?? item.menuItem.id
+                return (
+                  <div key={key} className="bg-gray-700 rounded-lg p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium truncate">
+                          {item.menuItem.is_deal && (
+                            <span className="text-orange-400 text-xs mr-1">DEAL</span>
+                          )}
+                          {item.menuItem.icon} {item.menuItem.name}
+                        </p>
+                        {/* Deal selections — show chosen items indented */}
+                        {item.is_deal_item && item.deal_selections && item.deal_selections.length > 0 && (
+                          <div className="mt-1 space-y-0.5">
+                            {item.deal_selections.map((sel, si) => {
+                              const chosen = sel.item_name
+                                ? sel.item_name
+                                : sel.item_names?.join(', ') ?? ''
+                              return (
+                                <p key={si} className="text-gray-400 text-xs pl-2 border-l border-orange-500/40">
+                                  {sel.label}: {chosen}
+                                </p>
+                              )
+                            })}
+                          </div>
+                        )}
+                        <p className="text-orange-400 text-sm">
+                          {currencySymbol}{(item.menuItem.price * item.quantity).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => updateQuantity(key, item.quantity - 1)}
+                          className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
+                        >-</button>
+                        <span className="text-white w-5 text-center text-sm">{item.quantity}</span>
+                        <button
+                          onClick={() => updateQuantity(key, item.quantity + 1)}
+                          className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
+                        >+</button>
+                        <button
+                          onClick={() => removeItem(key)}
+                          className="w-7 h-7 rounded bg-red-600/30 text-red-400 flex items-center justify-center hover:bg-red-600/50 ml-1"
+                        >×</button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -418,10 +457,12 @@ export default function Cart() {
             <span>Subtotal</span>
             <span>{currencySymbol}{subtotal().toFixed(2)}</span>
           </div>
-          <div className="flex justify-between text-sm text-gray-400">
-            <span>VAT (20%)</span>
-            <span>{currencySymbol}{vat().toFixed(2)}</span>
-          </div>
+          {vatEnabled ? (
+            <div className="flex justify-between text-sm text-gray-400">
+              <span>{vatLabel}</span>
+              <span>{currencySymbol}{vat().toFixed(2)}</span>
+            </div>
+          ) : null}
           {discountAmount > 0 && (
             <div className="flex justify-between text-sm text-green-400">
               <span className="flex items-center gap-1">
@@ -529,6 +570,8 @@ export default function Cart() {
               items: items.map((i) => ({ name: i.menuItem.name, qty: i.quantity, price: i.menuItem.price })),
               subtotalAmt: subtotal(),
               vatAmt: vat(),
+              vatRate,
+              vatEnabled,
               discountAmt: discountAmount,
               discountReason,
               totalAmt: total(),

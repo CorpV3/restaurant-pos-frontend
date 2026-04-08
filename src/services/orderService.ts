@@ -18,6 +18,15 @@ export interface CreateOrderPayload {
     menu_item_id: string
     quantity: number
     unit_price: number
+    is_deal_item?: boolean
+    deal_selections?: {
+      step: number
+      label: string
+      item_id?: string
+      item_name?: string
+      item_ids?: string[]
+      item_names?: string[]
+    }[]
   }[]
   customer_notes?: string
   discount_amount?: number
@@ -55,6 +64,10 @@ export async function createOrder(
       menu_item_id: ci.menuItem.id,
       quantity: ci.quantity,
       unit_price: ci.menuItem.price,
+      ...(ci.is_deal_item ? {
+        is_deal_item: true,
+        deal_selections: ci.deal_selections,
+      } : {}),
     })),
     discount_amount: discountAmount || undefined,
     discount_reason: discountReason || undefined,

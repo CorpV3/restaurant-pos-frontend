@@ -17,6 +17,14 @@ export interface BackendMenuItem {
   ingredients: string[]
   allergens: string[]
   display_order: number
+  is_deal?: boolean
+  deal_components?: {
+    step: number
+    label: string
+    qty: number
+    type: 'category' | 'items'
+    value: string | string[]
+  }[]
 }
 
 // Map backend categories to POS display categories
