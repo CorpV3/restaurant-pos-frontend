@@ -20,6 +20,8 @@ interface Restaurant {
   theme_color: string
   vat_enabled?: boolean
   vat_rate?: number
+  sumup_enabled?: boolean
+  tripos_enabled?: boolean
 }
 
 interface AuthStore {

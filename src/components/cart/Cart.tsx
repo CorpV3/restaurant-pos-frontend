@@ -560,6 +560,8 @@ export default function Cart() {
           discountAmount={discountAmount}
           discountReason={discountReason}
           delivery={orderType === 'delivery' ? deliveryDetails ?? undefined : undefined}
+          sumupEnabled={restaurant.sumup_enabled ?? false}
+          triposEnabled={restaurant.tripos_enabled ?? false}
           onClose={() => setShowPayment(false)}
           onComplete={(method, orderId, cashReceived) => {
             const tName = orderType === 'delivery'

@@ -1,6 +1,6 @@
 {
   "name": "restaurant-pos",
-  "version": "1.0.30",
+  "version": "1.0.31",
   "description": "Restaurant Point of Sale System - Windows & Android Application",
   "main": "dist-electron/main.js",
   "author": "CorpV3",

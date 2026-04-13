@@ -438,6 +438,8 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
           tableName={tableName(selectedOrder)}
           existingOrderId={selectedOrder.id}
           restaurantId={restaurant?.id}
+          sumupEnabled={restaurant?.sumup_enabled ?? false}
+          triposEnabled={restaurant?.tripos_enabled ?? false}
           onClose={() => setSelectedOrder(null)}
           onComplete={(method) => {
             setCompletedReceipt({ order: selectedOrder!, method })
