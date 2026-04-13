@@ -4,6 +4,7 @@ import type { CartItem } from '../../types'
 import { createOrder, completeOrder, type DeliveryDetails } from '../../services/orderService'
 import { api } from '../../services/api'
 import { appLog } from '../../services/appLogger'
+import { isSumUpAvailable, sumUpCheckout } from '../../services/sumupService'
 
 interface PaymentModalProps {
   total: number
@@ -112,6 +113,34 @@ export default function PaymentModal({
       }
       setSumupOrderId(orderId)
 
+      // ── Native Tap to Pay (Android APK with SumUp SDK) ─────────────────────
+      if (isSumUpAvailable()) {
+        appLog.info(`SumUp: using native Tap to Pay SDK`)
+        setSumupStatus('waiting')
+        try {
+          const result = await sumUpCheckout(total, 'GBP', `Table: ${tableName}`)
+          if (result.approved) {
+            setSumupStatus('paid')
+            await completeOrder(orderId, 'card')
+            appLog.info(`SumUp native: approved tx=${result.transactionCode}`)
+            toast.success(`Card payment approved — ${tableName}`)
+            onComplete('card', orderId)
+          } else {
+            setSumupStatus('failed')
+            toast.error('Payment declined')
+            setProcessing(false)
+          }
+        } catch (err: unknown) {
+          const msg = (err as { message?: string })?.message || 'Payment cancelled'
+          appLog.warn(`SumUp native: ${msg}`)
+          setSumupStatus('failed')
+          toast.error(msg)
+          setProcessing(false)
+        }
+        return
+      }
+
+      // ── Hosted Checkout (web / non-Android fallback) ────────────────────────
       const res = await api.post('/api/v1/payments/process', {
         order_id: orderId,
         amount: total,
@@ -335,23 +364,41 @@ export default function PaymentModal({
                 </div>
               )}
 
-              {sumupStatus === 'waiting' && sumupUrl && (
+              {sumupStatus === 'waiting' && (
                 <div className="text-center space-y-3">
-                  <div className="bg-white rounded-xl p-3 inline-block">
-                    <img src={qrUrl!} alt="QR code" className="w-48 h-48" />
-                  </div>
-                  <p className="text-white font-medium">Scan to pay</p>
-                  <p className="text-gray-400 text-sm">Customer scans QR or tap the link below</p>
-                  <a
-                    href={sumupUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="block text-blue-400 text-xs underline break-all"
-                  >{sumupUrl}</a>
-                  <div className="flex items-center justify-center gap-2 text-gray-400 text-sm pt-1">
-                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                    Waiting for payment...
-                  </div>
+                  {isSumUpAvailable() ? (
+                    // Native Tap to Pay — SumUp app handles it
+                    <>
+                      <div className="text-6xl">📱</div>
+                      <p className="text-white font-bold text-lg">Ask customer to tap card</p>
+                      <p className="text-gray-400 text-sm">Hold card near the back of this phone</p>
+                      <div className="flex items-center justify-center gap-2 text-blue-400 text-sm pt-1">
+                        <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                        Waiting for tap...
+                      </div>
+                    </>
+                  ) : sumupUrl ? (
+                    // Hosted checkout — show QR
+                    <>
+                      <div className="bg-white rounded-xl p-3 inline-block">
+                        <img src={qrUrl!} alt="QR code" className="w-48 h-48" />
+                      </div>
+                      <p className="text-white font-medium">Scan to pay</p>
+                      <p className="text-gray-400 text-sm">Customer scans QR or taps the link below</p>
+                      <a href={sumupUrl} target="_blank" rel="noreferrer"
+                        className="block text-blue-400 text-xs underline break-all"
+                      >{sumupUrl}</a>
+                      <div className="flex items-center justify-center gap-2 text-gray-400 text-sm pt-1">
+                        <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                        Waiting for payment...
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center gap-2 text-gray-400">
+                      <div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                      <span>Processing...</span>
+                    </div>
+                  )}
                 </div>
               )}
 
