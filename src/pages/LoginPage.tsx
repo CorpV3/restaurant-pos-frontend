@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuthStore } from '../stores/authStore'
 import { useServerSettings } from '../stores/serverSettingsStore'
 import { getStoredApiUrl, setApiUrl } from '../services/api'
-import { fetchPOSStaff, posPasscodeLogin, resolveRestaurantByCode } from '../services/posAuthService'
+import { fetchPOSStaff, posPasscodeLogin } from '../services/posAuthService'
 import type { POSStaffMember } from '../services/posAuthService'
 
 export default function LoginPage() {

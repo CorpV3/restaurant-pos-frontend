@@ -3,7 +3,7 @@ import { useCartStore } from '../../stores/cartStore'
 import { useAuthStore } from '../../stores/authStore'
 import { useMenuStore } from '../../stores/menuStore'
 import { fetchMenuItems, mapBackendCategory, getCategoryIcon } from '../../services/menuService'
-import type { MenuItem, DealComponent, DealSelectionStep } from '../../types'
+import type { MenuItem, DealComponent } from '../../types'
 import type { BackendMenuItem } from '../../services/menuService'
 
 function resolveImageUrl(path: string | null | undefined): string | undefined {

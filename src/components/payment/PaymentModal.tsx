@@ -52,9 +52,7 @@ export default function PaymentModal({
   const [cashReceived, setCashReceived] = useState('')
 
   // SumUp checkout state
-  const [sumupCheckoutId, setSumupCheckoutId] = useState<string | null>(null)
   const [sumupUrl, setSumupUrl] = useState<string | null>(null)
-  const [sumupOrderId, setSumupOrderId] = useState<string | null>(null)
   const [sumupStatus, setSumupStatus] = useState<'creating' | 'waiting' | 'paid' | 'failed'>('creating')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -112,8 +110,6 @@ export default function PaymentModal({
         const order = await createOrder(cartItems!, restaurantId!, tableId ?? null, discountAmount, discountReason, delivery)
         orderId = order.id
       }
-      setSumupOrderId(orderId)
-
       // ── Native Tap to Pay (Android APK with SumUp SDK) ─────────────────────
       if (isSumUpAvailable()) {
         appLog.info(`SumUp: using native Tap to Pay SDK`)
@@ -153,7 +149,6 @@ export default function PaymentModal({
 
       const { transaction_id: checkoutId, receipt_url: checkoutUrl } = res.data
       appLog.info(`SumUp: checkout created id=${checkoutId} url=${checkoutUrl}`)
-      setSumupCheckoutId(checkoutId)
       setSumupUrl(checkoutUrl)
       setSumupStatus('waiting')
 
@@ -203,9 +198,7 @@ export default function PaymentModal({
 
   const cancelSumup = () => {
     if (pollRef.current) clearInterval(pollRef.current)
-    setSumupCheckoutId(null)
     setSumupUrl(null)
-    setSumupOrderId(null)
     setSumupStatus('creating')
     setCardFlow(null)
     setMethod(null)
