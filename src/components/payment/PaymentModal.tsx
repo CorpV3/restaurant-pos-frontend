@@ -5,6 +5,7 @@ import { createOrder, completeOrder, type DeliveryDetails } from '../../services
 import { api } from '../../services/api'
 import { appLog } from '../../services/appLogger'
 import { isSumUpAvailable, sumUpCheckout } from '../../services/sumupService'
+import NumPad from '../ui/NumPad'
 
 interface PaymentModalProps {
   total: number
@@ -156,17 +157,32 @@ export default function PaymentModal({
       setSumupUrl(checkoutUrl)
       setSumupStatus('waiting')
 
-      // Poll for payment every 3 seconds
+      // Poll for payment every 3 seconds, max 100 attempts (5 minutes)
+      let pollAttempts = 0
+      const MAX_POLL_ATTEMPTS = 100
       pollRef.current = setInterval(async () => {
+        pollAttempts++
         try {
           const poll = await api.get(`/api/v1/payments/sumup/checkout/${checkoutId}/status`)
-          if (poll.data.paid) {
+          if (poll.data.paid || poll.data.status === 'PAID') {
             clearInterval(pollRef.current!)
             setSumupStatus('paid')
             await completeOrder(orderId!, 'card')
             appLog.info(`SumUp: payment confirmed for order ${orderId}`)
             toast.success(`Card payment received — ${tableName}`)
             onComplete('card', orderId!)
+          } else if (poll.data.status === 'FAILED') {
+            clearInterval(pollRef.current!)
+            appLog.warn(`SumUp: payment FAILED for order ${orderId}`)
+            setSumupStatus('failed')
+            toast.error('Payment declined by card network')
+            setProcessing(false)
+          } else if (pollAttempts >= MAX_POLL_ATTEMPTS) {
+            clearInterval(pollRef.current!)
+            appLog.warn(`SumUp: poll timeout after ${pollAttempts} attempts`)
+            setSumupStatus('failed')
+            toast.error('Payment link expired — ask customer if card was charged')
+            setProcessing(false)
           }
         } catch (e) {
           appLog.warn(`SumUp poll error: ${e}`)
@@ -288,22 +304,20 @@ export default function PaymentModal({
             </div>
           )}
 
-          {/* Step 2 (Cash): amount entry */}
+          {/* Step 2 (Cash): amount entry via NumPad */}
           {method === 'cash' && (
             <div className="space-y-3">
-              <div>
-                <label className="text-gray-400 text-sm block mb-1">Cash Received</label>
-                <input
-                  type="number"
-                  value={cashReceived}
-                  onChange={(e) => setCashReceived(e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white text-lg focus:outline-none focus:border-orange-500"
-                  placeholder="0.00"
-                  step="0.01"
-                  autoFocus
-                  disabled={processing}
-                />
-              </div>
+              <NumPad
+                value={cashReceived}
+                onChange={setCashReceived}
+                currencySymbol={currencySymbol}
+                quickAmounts={[
+                  Math.ceil(total),
+                  Math.ceil(total / 5) * 5,
+                  Math.ceil(total / 10) * 10,
+                  Math.ceil(total / 20) * 20,
+                ].filter((v, i, a) => a.indexOf(v) === i && v >= total).slice(0, 4)}
+              />
               {cashReceived && change >= 0 && (
                 <div className="text-center bg-gray-700 rounded-lg p-3">
                   <p className="text-gray-400 text-sm">Change</p>

@@ -1,16 +1,20 @@
-import { useState, useEffect } from 'react'
-import { ShoppingCart, Tag } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { ShoppingCart, Tag, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useCartStore } from '../../stores/cartStore'
 import { useAuthStore } from '../../stores/authStore'
+import { useMenuStore } from '../../stores/menuStore'
 import { usePrinterStore } from '../../stores/printerStore'
 import { thermalPrinter } from '../../services/thermalPrinter'
 import { appLog } from '../../services/appLogger'
 import { refundOrder, type DeliveryDetails } from '../../services/orderService'
 import PaymentModal from '../payment/PaymentModal'
 import DeliveryModal from './DeliveryModal'
+import NumPad from '../ui/NumPad'
 import { fetchTables, type Table } from '../../services/tableService'
+import { mapBackendCategory } from '../../services/menuService'
+import type { MenuItem } from '../../types'
 
 interface ReceiptSnapshot {
   orderId: string
@@ -29,10 +33,46 @@ interface ReceiptSnapshot {
   date: string
 }
 
+import type { CartItem } from '../../types'
+
+/** Check if cart non-deal items satisfy all components of a deal */
+function matchDeal(deal: MenuItem, cartItems: CartItem[]) {
+  if (!deal.deal_components || deal.deal_components.length === 0) return null
+  const nonDealCart = cartItems.filter((ci: CartItem) => !ci.menuItem.is_deal)
+  const matched: string[] = []  // cartKeys of matched items
+
+  for (const comp of deal.deal_components) {
+    let needed = comp.qty
+    const candidates = nonDealCart.filter((ci: CartItem) => {
+      if (matched.includes(ci.cartKey ?? '')) return false
+      if (comp.type === 'category') {
+        const displayCat = mapBackendCategory(comp.value as string)
+        return ci.menuItem.category === displayCat
+      } else {
+        const ids = comp.value as string[]
+        return ids.includes(ci.menuItem.id)
+      }
+    })
+    for (const ci of candidates) {
+      if (needed <= 0) break
+      needed -= Math.min(ci.quantity, needed)
+      matched.push(ci.cartKey ?? ci.menuItem.id)
+    }
+    if (needed > 0) return null  // component not satisfied
+  }
+
+  const matchedTotal = nonDealCart
+    .filter((ci: CartItem) => matched.includes(ci.cartKey ?? ci.menuItem.id))
+    .reduce((s: number, ci: CartItem) => s + ci.menuItem.price * ci.quantity, 0)
+  const saving = parseFloat((matchedTotal - deal.price).toFixed(2))
+  return saving > 0 ? { deal, matched, saving } : null
+}
+
 export default function Cart() {
-  const { items, removeItem, updateQuantity, clearCart, subtotal, vat, total, discountAmount, discountReason, setDiscount, clearDiscount, vatEnabled, vatRate, setVat } =
+  const { items, removeItem, updateQuantity, clearCart, subtotal, vat, total, discountAmount, discountReason, setDiscount, clearDiscount, vatEnabled, vatRate, setVat, addItem } =
     useCartStore()
-  const { restaurant } = useAuthStore()
+  const { restaurant, refreshRestaurant } = useAuthStore()
+  const { allItems: allMenuItems } = useMenuStore()
   const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
   const [showPayment, setShowPayment] = useState(false)
   const [orderType, setOrderType] = useState<'dine-in' | 'delivery'>('dine-in')
@@ -53,6 +93,33 @@ export default function Cart() {
   const [refundMethod, setRefundMethod] = useState<'cash' | 'card'>('cash')
   const [refundReason, setRefundReason] = useState('')
   const [refunding, setRefunding] = useState(false)
+  const [dismissedDeal, setDismissedDeal] = useState<string | null>(null)
+
+  // Refresh restaurant data on mount to pick up any admin changes (e.g. gateway enabled)
+  useEffect(() => { refreshRestaurant() }, [])
+
+  // Detect if cart items match an available deal
+  const dealSuggestion = useMemo(() => {
+    if (items.length === 0) return null
+    const deals = allMenuItems.filter((m) => m.is_deal && m.deal_components?.length)
+    for (const deal of deals) {
+      if (dismissedDeal === deal.id) continue
+      const match = matchDeal(deal, items)
+      if (match) return match
+    }
+    return null
+  }, [items, allMenuItems, dismissedDeal])
+
+  const applyDealSuggestion = () => {
+    if (!dealSuggestion) return
+    const { deal, matched } = dealSuggestion
+    // Remove matched cart items (reduce qty or remove entirely)
+    matched.forEach((key) => removeItem(key))
+    // Add the deal item at deal price
+    addItem(deal)
+    toast.success(`${deal.name} applied — saved ${currencySymbol}${dealSuggestion.saving.toFixed(2)}!`)
+    setDismissedDeal(null)
+  }
 
   // Sync VAT settings from restaurant whenever restaurant data changes
   useEffect(() => {
@@ -478,6 +545,32 @@ export default function Cart() {
           </div>
         </div>
 
+        {/* Deal suggestion banner */}
+        {dealSuggestion && (
+          <div className="flex-shrink-0 mx-3 mb-2 bg-orange-500/15 border border-orange-500/50 rounded-xl p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2 flex-1 min-w-0">
+                <Sparkles size={16} className="text-orange-400 flex-shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-orange-300 text-xs font-bold leading-tight">Deal Available!</p>
+                  <p className="text-white text-xs leading-tight truncate">{dealSuggestion.deal.name}</p>
+                  <p className="text-green-400 text-xs font-semibold">Save {currencySymbol}{dealSuggestion.saving.toFixed(2)}</p>
+                </div>
+              </div>
+              <div className="flex gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => setDismissedDeal(dealSuggestion.deal.id)}
+                  className="text-gray-500 hover:text-gray-300 text-xs px-1.5 py-1 rounded"
+                >No</button>
+                <button
+                  onClick={applyDealSuggestion}
+                  className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-3 py-1 rounded-lg"
+                >Apply</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Offer + Pay buttons */}
         <div className="flex-shrink-0 px-4 pb-4 pt-2 bg-gray-800 space-y-2">
           {items.length > 0 && (
@@ -523,9 +616,11 @@ export default function Cart() {
                   </button>
                 ))}
               </div>
-              <input type="number" value={discountInput} onChange={e => setDiscountInput(e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white text-lg focus:outline-none focus:border-green-500"
-                placeholder={discountType === 'fixed' ? '0.00' : '0-100'} step="0.01" min="0" autoFocus />
+              <NumPad
+                value={discountInput}
+                onChange={setDiscountInput}
+                currencySymbol={discountType === 'fixed' ? currencySymbol : '%'}
+              />
               <input value={discountReasonInput} onChange={e => setDiscountReasonInput(e.target.value)}
                 className="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500"
                 placeholder="Reason (e.g. Regular customer, loyalty)" />
