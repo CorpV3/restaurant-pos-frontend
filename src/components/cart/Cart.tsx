@@ -285,9 +285,7 @@ export default function Cart() {
             {showRefund ? (
               <div className="bg-gray-600 rounded-xl p-3 mb-3 space-y-2">
                 <p className="text-white text-sm font-semibold">Process Refund</p>
-                <input type="number" value={refundAmount} onChange={e => setRefundAmount(e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-500 rounded-lg px-3 py-2 text-white text-sm"
-                  placeholder={`Amount (max ${currencySymbol}${r.totalAmt.toFixed(2)})`} step="0.01" />
+                <NumPad value={refundAmount} onChange={setRefundAmount} currencySymbol={currencySymbol} />
                 <div className="grid grid-cols-2 gap-2">
                   {(['cash', 'card'] as const).map(m => (
                     <button key={m} onClick={() => setRefundMethod(m)}
