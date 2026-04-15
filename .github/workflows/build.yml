@@ -104,20 +104,35 @@ jobs:
 
       - name: Add SumUp SDK dependency
         run: |
-          # Must run AFTER cap sync — cap sync regenerates build.gradle
+          # Append blocks — Gradle merges multiple allprojects/dependencies blocks safely.
+          # Avoids sed line-corruption issues entirely.
 
-          # 1. Add SumUp Maven repo after every mavenCentral() in android/build.gradle
-          sed -i '/mavenCentral()/a\        maven { url "https://maven.sumup.com/releases" }' android/build.gradle
+          # 1. Add SumUp Maven repo (appended to android/build.gradle)
+          cat >> android/build.gradle << 'GRADLE_EOF'
 
-          # 2. SumUp SDK v7 requires minSdkVersion 26
-          sed -i 's/minSdkVersion [0-9]*/minSdkVersion 26/' android/app/build.gradle
+allprojects {
+    repositories {
+        maven { url 'https://maven.sumup.com/releases' }
+    }
+}
+GRADLE_EOF
 
-          # 3. Enable core library desugaring in compileOptions (Groovy DSL syntax)
-          sed -i '/compileOptions {/a\        coreLibraryDesugaringEnabled true' android/app/build.gradle
+          # 2. Raise minSdkVersion to 26 (SumUp v7 minimum) via variables.gradle
+          sed -i 's/minSdkVersion *= *[0-9]*/minSdkVersion = 26/' android/variables.gradle || true
 
-          # 4. Add SDK dependencies (one sed per line to avoid \n issues)
-          sed -i '/^dependencies {/a\    implementation "com.sumup:merchant-sdk:7.0.0"' android/app/build.gradle
-          sed -i '/^dependencies {/a\    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"' android/app/build.gradle
+          # 3. Enable coreLibraryDesugaring + add SumUp SDK (appended to android/app/build.gradle)
+          cat >> android/app/build.gradle << 'APP_EOF'
+
+android {
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+    }
+}
+dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+    implementation 'com.sumup:merchant-sdk:7.0.0'
+}
+APP_EOF
 
       # ── Build debug APK — always ───────────────────────────────────────────
       - name: Build debug APK
