@@ -101,32 +101,9 @@ jobs:
 
       - name: Sync Capacitor
         run: npx cap sync android
-
-      - name: Add SumUp SDK dependency
-        run: |
-          # Must run AFTER cap sync — cap sync regenerates build.gradle and wipes earlier changes
-
-          # Download SumUp SDK AAR directly into local libs (bypasses Maven POM resolution)
-          mkdir -p android/app/libs
-          curl -f -sL \
-            "https://maven.sumup.com/nexus/content/groups/public/com/sumup/merchant/api/SumUpSDK/4.1.2/SumUpSDK-4.1.2.aar" \
-            -o android/app/libs/SumUpSDK.aar \
-          || curl -f -sL \
-            "https://maven.sumup.com/nexus/content/repositories/releases/com/sumup/merchant/api/SumUpSDK/4.1.2/SumUpSDK-4.1.2.aar" \
-            -o android/app/libs/SumUpSDK.aar \
-          || echo "::warning::SumUp SDK direct download failed; falling back to Maven resolution"
-
-          # Add SumUp Maven repo to project-level build.gradle (for Maven fallback)
-          sed -i '/repositories {/a\        maven { url "https://maven.sumup.com/nexus/content/groups/public" }' android/build.gradle
-
-          # Use local AAR if downloaded, otherwise use Maven dependency
-          if [ -f "android/app/libs/SumUpSDK.aar" ]; then
-            echo "Using local SumUp SDK AAR from libs/"
-            sed -i '/dependencies {/a\    implementation files("libs/SumUpSDK.aar")' android/app/build.gradle
-          else
-            echo "Using Maven SumUp SDK dependency"
-            sed -i '/dependencies {/a\    implementation "com.sumup.merchant.api:SumUpSDK:4.1.2@aar"' android/app/build.gradle
-          fi
+        # Note: SumUpPlugin uses a compile stub (no SDK dependency needed).
+        # To re-enable native Tap-to-Pay: place SumUpSDK.aar in android/app/libs/,
+        # restore the real SumUpPlugin.java, and re-add the SDK dependency here.
 
       # ── Build debug APK — always ───────────────────────────────────────────
       - name: Build debug APK

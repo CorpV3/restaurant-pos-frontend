@@ -2,6 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import legacy from '@vitejs/plugin-legacy'
 import path from 'path'
+import { createRequire } from 'module'
+
+const require = createRequire(import.meta.url)
 
 // Electron plugins are only applied when building for Electron (--mode electron)
 // Capacitor / web builds use plain Vite + React with legacy browser support
