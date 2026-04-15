@@ -101,9 +101,22 @@ jobs:
 
       - name: Sync Capacitor
         run: npx cap sync android
-        # Note: SumUpPlugin uses a compile stub (no SDK dependency needed).
-        # To re-enable native Tap-to-Pay: place SumUpSDK.aar in android/app/libs/,
-        # restore the real SumUpPlugin.java, and re-add the SDK dependency here.
+
+      - name: Add SumUp SDK dependency
+        run: |
+          # Must run AFTER cap sync — cap sync regenerates build.gradle
+
+          # Add SumUp Maven repo (correct URL as of SDK v7)
+          sed -i '/allprojects {/,/^}/s/repositories {/repositories {\n        maven { url "https:\/\/maven.sumup.com\/releases" }/' android/build.gradle
+
+          # SumUp SDK v7 requires minSdkVersion 26 — patch it if lower
+          sed -i 's/minSdkVersion [0-9]*/minSdkVersion 26/' android/app/build.gradle
+
+          # Add coreLibraryDesugaring (required by SumUp v7) and the SDK itself
+          sed -i '/dependencies {/a\    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"\n    implementation "com.sumup:merchant-sdk:7.0.0"' android/app/build.gradle
+
+          # Enable core library desugaring in compileOptions
+          sed -i '/compileOptions {/a\        isCoreLibraryDesugaringEnabled = true' android/app/build.gradle || true
 
       # ── Build debug APK — always ───────────────────────────────────────────
       - name: Build debug APK
