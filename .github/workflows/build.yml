@@ -106,17 +106,18 @@ jobs:
         run: |
           # Must run AFTER cap sync — cap sync regenerates build.gradle
 
-          # Add SumUp Maven repo (correct URL as of SDK v7)
-          sed -i '/allprojects {/,/^}/s/repositories {/repositories {\n        maven { url "https:\/\/maven.sumup.com\/releases" }/' android/build.gradle
+          # 1. Add SumUp Maven repo after every mavenCentral() in android/build.gradle
+          sed -i '/mavenCentral()/a\        maven { url "https://maven.sumup.com/releases" }' android/build.gradle
 
-          # SumUp SDK v7 requires minSdkVersion 26 — patch it if lower
+          # 2. SumUp SDK v7 requires minSdkVersion 26
           sed -i 's/minSdkVersion [0-9]*/minSdkVersion 26/' android/app/build.gradle
 
-          # Add coreLibraryDesugaring (required by SumUp v7) and the SDK itself
-          sed -i '/dependencies {/a\    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"\n    implementation "com.sumup:merchant-sdk:7.0.0"' android/app/build.gradle
+          # 3. Enable core library desugaring in compileOptions (Groovy DSL syntax)
+          sed -i '/compileOptions {/a\        coreLibraryDesugaringEnabled true' android/app/build.gradle
 
-          # Enable core library desugaring in compileOptions
-          sed -i '/compileOptions {/a\        isCoreLibraryDesugaringEnabled = true' android/app/build.gradle || true
+          # 4. Add SDK dependencies (one sed per line to avoid \n issues)
+          sed -i '/^dependencies {/a\    implementation "com.sumup:merchant-sdk:7.0.0"' android/app/build.gradle
+          sed -i '/^dependencies {/a\    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"' android/app/build.gradle
 
       # ── Build debug APK — always ───────────────────────────────────────────
       - name: Build debug APK
