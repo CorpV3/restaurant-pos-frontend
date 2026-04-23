@@ -18,6 +18,13 @@ interface Restaurant {
   currency_symbol: string
   currency_code: string
   theme_color: string
+  vat_enabled?: boolean
+  vat_rate?: number
+  sumup_enabled?: boolean
+  tripos_enabled?: boolean
+  chef_display_enabled?: boolean
+  auto_print_enabled?: boolean
+  auto_print_copies?: number
 }
 
 interface AuthStore {
