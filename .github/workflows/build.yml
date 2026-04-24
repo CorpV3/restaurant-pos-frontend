@@ -330,24 +330,33 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Echo download links
+      - name: Post download links to job summary
         run: |
           REPO="${{ github.repository }}"
           TAG="${{ github.ref_name }}"
           BASE="https://github.com/${REPO}/releases/download/${TAG}"
+          PAGE="https://github.com/${REPO}/releases/tag/${TAG}"
+
+          # Print to console
           echo ""
           echo "================================================================"
           echo "  RELEASE ${TAG} - DOWNLOAD LINKS"
           echo "================================================================"
-          echo "  Windows EXE:"
-          echo "  ${BASE}/RestaurantPOS-Setup.exe"
-          echo ""
-          echo "  Android APK:"
-          echo "  ${BASE}/RestaurantPOS-${TAG}-android.apk"
-          echo ""
-          echo "  iOS IPA:"
-          echo "  ${BASE}/RestaurantPOS-${TAG}-ios.ipa"
-          echo ""
-          echo "  Release page:"
-          echo "  https://github.com/${REPO}/releases/tag/${TAG}"
+          echo "  Windows : ${BASE}/RestaurantPOS-Setup.exe"
+          echo "  Android : ${BASE}/RestaurantPOS-${TAG}-android.apk"
+          echo "  iOS     : ${BASE}/RestaurantPOS-${TAG}-ios.ipa"
+          echo "  Release : ${PAGE}"
           echo "================================================================"
+
+          # Write clickable links to the GitHub Actions job summary page
+          {
+            echo "## Restaurant POS ${TAG} — Download Links"
+            echo ""
+            echo "| Platform | Direct Download |"
+            echo "|----------|----------------|"
+            echo "| 🪟 Windows | [RestaurantPOS-Setup.exe](${BASE}/RestaurantPOS-Setup.exe) |"
+            echo "| 🤖 Android | [RestaurantPOS-${TAG}-android.apk](${BASE}/RestaurantPOS-${TAG}-android.apk) |"
+            echo "| 🍎 iOS iPad | [RestaurantPOS-${TAG}-ios.ipa](${BASE}/RestaurantPOS-${TAG}-ios.ipa) |"
+            echo ""
+            echo "📦 [View full release page](${PAGE})"
+          } >> "$GITHUB_STEP_SUMMARY"

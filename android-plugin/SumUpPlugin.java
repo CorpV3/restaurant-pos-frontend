@@ -92,7 +92,8 @@ public class SumUpPlugin extends Plugin {
             JSObject ret = new JSObject();
             if (data != null) {
                 int result = data.getIntExtra(SumUpAPI.Response.RESULT_CODE, -1);
-                boolean approved = (result == SumUpAPI.Response.ResultCode.TRANSACTION_SUCCESSFUL);
+                // SumUp SDK v7 removed ResultCode inner class; TRANSACTION_SUCCESSFUL = 1
+                boolean approved = (result == 1);
                 String txCode = data.getStringExtra(SumUpAPI.Response.TX_CODE);
 
                 ret.put("approved", approved);
