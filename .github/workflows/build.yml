@@ -53,6 +53,19 @@ jobs:
             release/*.msi
           retention-days: 30
 
+      - name: Echo Windows download URL
+        run: |
+          echo ""
+          echo "============================================================"
+          echo "  WINDOWS BUILD COMPLETE"
+          if [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = "true" ]; then
+            echo "  Download: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RestaurantPOS-Setup.exe"
+          else
+            echo "  Artifact saved — download from Actions > Artifacts > windows-installer"
+            echo "  Release URL (after tagging): https://github.com/${{ github.repository }}/releases/download/<tag>/RestaurantPOS-Setup.exe"
+          fi
+          echo "============================================================"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # JOB 2 — Android APK (Capacitor)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -167,6 +180,19 @@ jobs:
           name: android-release-apk
           path: RestaurantPOS-*-android.apk
           retention-days: 90
+
+      - name: Echo Android download URL
+        run: |
+          echo ""
+          echo "============================================================"
+          echo "  ANDROID BUILD COMPLETE"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "  Download: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-android.apk"
+          else
+            echo "  Artifact saved — download from Actions > Artifacts > android-debug-apk"
+            echo "  Release URL (after tagging): https://github.com/${{ github.repository }}/releases/download/<tag>/RestaurantPOS-<tag>-android.apk"
+          fi
+          echo "============================================================"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # JOB 3 — iOS IPA (Capacitor, unsigned — sideload via AltStore / Configurator)
@@ -336,6 +362,19 @@ jobs:
           name: ios-release-ipa
           path: "RestaurantPOS-*-ios.ipa"
           retention-days: 90
+
+      - name: Echo iOS download URL
+        run: |
+          echo ""
+          echo "============================================================"
+          echo "  iOS BUILD COMPLETE"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "  Download: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-ios.ipa"
+          else
+            echo "  Artifact saved — download from Actions > Artifacts > ios-debug-ipa"
+            echo "  Release URL (after tagging): https://github.com/${{ github.repository }}/releases/download/<tag>/RestaurantPOS-<tag>-ios.ipa"
+          fi
+          echo "============================================================"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # JOB 4 — GitHub Release
