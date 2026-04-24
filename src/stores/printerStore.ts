@@ -18,6 +18,13 @@ interface PrinterState {
   paperWidth: 32 | 42 | 48
   // Print darkness 0 (lightest) – 7 (darkest), ESC/POS DC2 # n
   printDensity: number
+  // Number of receipt copies to print
+  printCopies: number
+  // Cash drawer: auto-open after payment (cash + card)
+  cashDrawerEnabled: boolean
+  // Windows only: receipt printer IP for TCP cash drawer kick (port 9100)
+  drawerIp: string
+  drawerTcpPort: number
 
   setPrinterType: (t: PrinterType) => void
   setSerialPath: (p: string) => void
@@ -25,6 +32,10 @@ interface PrinterState {
   setAutoPrint: (v: boolean) => void
   setPaperWidth: (w: 32 | 42 | 48) => void
   setPrintDensity: (d: number) => void
+  setPrintCopies: (n: number) => void
+  setCashDrawerEnabled: (v: boolean) => void
+  setDrawerIp: (ip: string) => void
+  setDrawerTcpPort: (p: number) => void
 }
 
 export const usePrinterStore = create<PrinterState>()(
@@ -37,6 +48,10 @@ export const usePrinterStore = create<PrinterState>()(
       autoPrint: false,
       paperWidth: 48,
       printDensity: 3,
+      printCopies: 1,
+      cashDrawerEnabled: false,
+      drawerIp: '',
+      drawerTcpPort: 9100,
 
       setPrinterType: (t) => set({ printerType: t }),
       setSerialPath: (p) => set({ serialPath: p }),
@@ -45,6 +60,10 @@ export const usePrinterStore = create<PrinterState>()(
       setAutoPrint: (v) => set({ autoPrint: v }),
       setPaperWidth: (w) => set({ paperWidth: w }),
       setPrintDensity: (d) => set({ printDensity: Math.max(0, Math.min(7, d)) }),
+      setPrintCopies: (n) => set({ printCopies: Math.max(1, Math.min(5, n)) }),
+      setCashDrawerEnabled: (v) => set({ cashDrawerEnabled: v }),
+      setDrawerIp: (ip) => set({ drawerIp: ip }),
+      setDrawerTcpPort: (p) => set({ drawerTcpPort: p }),
     }),
     { name: 'pos-printer-settings' }
   )

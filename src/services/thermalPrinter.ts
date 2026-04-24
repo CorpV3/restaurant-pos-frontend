@@ -15,6 +15,9 @@ const GS  = 0x1d;
 const DC2 = 0x12;
 const LF  = 0x0a;
 
+// ESC p m t1 t2 — cash drawer kick: pin 2, 50ms pulse
+const CASH_DRAWER_CMD = new Uint8Array([ESC, 0x70, 0x00, 0x19, 0xFF]);
+
 export const ESCPOS = {
   INIT:          [ESC, 0x40],           // 1B 40
   ALIGN_LEFT:    [ESC, 0x61, 0x00],     // 1B 61 00
@@ -646,6 +649,73 @@ class ThermalPrinterService {
         throw new Error('No printer configured');
       }
     }
+  }
+
+  /**
+   * Open the cash drawer via ESC/POS cash drawer kick command.
+   *
+   * Android: routes through Citaq serial → SerialPlugin → Bluetooth (same as printReceipt).
+   * Windows (Electron): sends raw bytes over TCP to the receipt printer on port 9100.
+   *   Requires drawerIp to be configured in printer settings.
+   */
+  async openCashDrawer(
+    printerType: 'serial' | 'bluetooth' = 'serial',
+    savedAddress: string | null = null,
+    drawerIp = '',
+    drawerTcpPort = 9100,
+  ): Promise<void> {
+    const bytes = CASH_DRAWER_CMD;
+    const citaq = getCitaqPrinter();
+    const serialPlugin = printerType === 'serial' ? getSerialPlugin() : null;
+    const bt = getBtSerial();
+    const android = isAndroid();
+
+    appLog.info(`openCashDrawer: type=${printerType} citaq=${!!citaq} serial=${!!serialPlugin} bt=${!!bt} android=${android}`);
+
+    // ── Android: Citaq H10-3 built-in serial ──────────────────────────────────
+    if (citaq) {
+      const b64 = btoa(String.fromCharCode(...bytes));
+      citaq.print(b64);
+      appLog.info('Cash drawer opened via Citaq');
+      return;
+    }
+
+    // ── Android: SerialPrinterPlugin ──────────────────────────────────────────
+    if (serialPlugin) {
+      await this.printSerial(bytes, serialPlugin);
+      appLog.info('Cash drawer opened via SerialPlugin');
+      return;
+    }
+
+    // ── Android: Bluetooth ────────────────────────────────────────────────────
+    if (bt && printerType === 'bluetooth') {
+      if (!this.connectedAddress && savedAddress) {
+        await this.connect(savedAddress);
+      }
+      if (this.connectedAddress) {
+        await this.printBluetooth(bytes, bt);
+        appLog.info('Cash drawer opened via Bluetooth');
+        return;
+      }
+    }
+
+    // ── Windows Electron: TCP socket to receipt printer on port 9100 ──────────
+    if (!android) {
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.openCashDrawer) {
+        await electronAPI.openCashDrawer({
+          ip: drawerIp,
+          port: drawerTcpPort,
+          bytes: Array.from(bytes),
+        });
+        appLog.info('Cash drawer opened via Electron IPC');
+        return;
+      }
+      appLog.warn('Cash drawer: no Electron IPC — configure printer IP in Settings → Printer');
+      throw new Error('Configure your printer IP address in Settings → Printer to open the cash drawer on Windows.');
+    }
+
+    throw new Error('Cash drawer: no printer path found. Check printer settings.');
   }
 
   private printDesktop(data: ReceiptData): void {

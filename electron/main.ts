@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
+import net from 'net'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -55,4 +56,30 @@ ipcMain.handle('get-app-version', () => app.getVersion())
 
 ipcMain.handle('get-app-path', (_, name: string) => {
   return app.getPath(name as any)
+})
+
+// Cash drawer: send ESC/POS kick command via TCP to receipt printer (port 9100)
+ipcMain.handle('open-cash-drawer', (_event, { ip, port, bytes }: { ip: string; port: number; bytes: number[] }) => {
+  return new Promise<boolean>((resolve, reject) => {
+    if (!ip) {
+      reject(new Error('Printer IP not configured. Set it in Settings → Printer.'))
+      return
+    }
+    const buf = Buffer.from(bytes)
+    const socket = new net.Socket()
+    socket.setTimeout(3000)
+    socket.connect(port, ip, () => {
+      socket.write(buf, () => {
+        socket.end()
+        resolve(true)
+      })
+    })
+    socket.on('timeout', () => {
+      socket.destroy()
+      reject(new Error(`Cash drawer: connection to ${ip}:${port} timed out`))
+    })
+    socket.on('error', (err) => {
+      reject(new Error(`Cash drawer: ${err.message}`))
+    })
+  })
 })

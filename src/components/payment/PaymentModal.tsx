@@ -5,6 +5,8 @@ import { createOrder, completeOrder, type DeliveryDetails } from '../../services
 import { api } from '../../services/api'
 import { appLog } from '../../services/appLogger'
 import { isSumUpAvailable, sumUpCheckout } from '../../services/sumupService'
+import { thermalPrinter } from '../../services/thermalPrinter'
+import { usePrinterStore } from '../../stores/printerStore'
 import NumPad from '../ui/NumPad'
 
 interface PaymentModalProps {
@@ -45,6 +47,15 @@ export default function PaymentModal({
   sumupEnabled = false,
   triposEnabled = false,
 }: PaymentModalProps) {
+  const { cashDrawerEnabled, printerType, savedAddress, drawerIp, drawerTcpPort } = usePrinterStore()
+
+  const kickDrawer = () => {
+    if (!cashDrawerEnabled) return
+    thermalPrinter.openCashDrawer(printerType, savedAddress, drawerIp, drawerTcpPort)
+      .then(() => appLog.info('Cash drawer opened after payment'))
+      .catch((e) => appLog.warn(`Cash drawer: ${e?.message ?? e}`))
+  }
+
   const [method, setMethod] = useState<'cash' | 'card' | null>(null)
   const [cardFlow, setCardFlow] = useState<CardFlow | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -84,6 +95,7 @@ export default function PaymentModal({
         orderId = order.id
       }
       await completeOrder(orderId, method)
+      kickDrawer()
       toast.success(`Payment complete — ${tableName}`)
       const cr = cashReceived ? parseFloat(cashReceived) : undefined
       onComplete(method, orderId, cr)
@@ -119,6 +131,7 @@ export default function PaymentModal({
           if (result.approved) {
             setSumupStatus('paid')
             await completeOrder(orderId, 'card')
+            kickDrawer()
             appLog.info(`SumUp native: approved tx=${result.transactionCode}`)
             toast.success(`Card payment approved — ${tableName}`)
             onComplete('card', orderId)
@@ -163,6 +176,7 @@ export default function PaymentModal({
             clearInterval(pollRef.current!)
             setSumupStatus('paid')
             await completeOrder(orderId!, 'card')
+            kickDrawer()
             appLog.info(`SumUp: payment confirmed for order ${orderId}`)
             toast.success(`Card payment received — ${tableName}`)
             onComplete('card', orderId!)
@@ -224,6 +238,7 @@ export default function PaymentModal({
       if (res.data.approved) {
         setTerminalStatus('approved')
         await completeOrder(orderId, 'card')
+        kickDrawer()
         toast.success(`Card payment approved — ${tableName}`)
         onComplete('card', orderId)
       } else {

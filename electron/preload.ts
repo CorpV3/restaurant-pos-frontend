@@ -4,4 +4,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   getAppPath: (name: string) => ipcRenderer.invoke('get-app-path', name),
   platform: process.platform,
+  openCashDrawer: (opts: { ip: string; port: number; bytes: number[] }) =>
+    ipcRenderer.invoke('open-cash-drawer', opts),
 })

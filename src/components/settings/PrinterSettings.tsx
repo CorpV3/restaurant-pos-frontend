@@ -1,19 +1,25 @@
 import { useState, useEffect } from 'react'
-import { Bluetooth, BluetoothOff, Printer, Check, RefreshCw } from 'lucide-react'
+import { Bluetooth, BluetoothOff, Printer, Check, RefreshCw, DollarSign } from 'lucide-react'
 import { thermalPrinter, type BluetoothDevice } from '../../services/thermalPrinter'
 import { usePrinterStore, type PrinterType } from '../../stores/printerStore'
+import toast from 'react-hot-toast'
 
 export default function PrinterSettings() {
   const {
     printerType, serialPath, savedAddress, savedName,
-    autoPrint, paperWidth, printDensity,
+    autoPrint, paperWidth, printDensity, printCopies,
+    cashDrawerEnabled, drawerIp, drawerTcpPort,
     setPrinterType, setSerialPath, setSavedPrinter, setAutoPrint, setPaperWidth, setPrintDensity,
+    setPrintCopies, setCashDrawerEnabled, setDrawerIp, setDrawerTcpPort,
   } = usePrinterStore()
 
   const [isAndroid, setIsAndroid] = useState(false)
+  const [isWindows, setIsWindows] = useState(false)
   const [hasSerialPlugin, setHasSerialPlugin] = useState(false)
   const [detectedPaths, setDetectedPaths] = useState<string[]>([])
   const [serialPathInput, setSerialPathInput] = useState(serialPath)
+  const [drawerIpInput, setDrawerIpInput] = useState(drawerIp)
+  const [openingDrawer, setOpeningDrawer] = useState(false)
 
   // Bluetooth state
   const [btSupported, setBtSupported] = useState(false)
@@ -27,6 +33,7 @@ export default function PrinterSettings() {
       typeof (window as any).Capacitor !== 'undefined' &&
       (window as any).Capacitor.getPlatform() === 'android'
     setIsAndroid(platform)
+    setIsWindows(!!(window as any).electronAPI)
 
     const hasPlugin = thermalPrinter.hasSerialPlugin()
     setHasSerialPlugin(hasPlugin)
@@ -45,6 +52,22 @@ export default function PrinterSettings() {
   const applySerialPath = () => {
     setSerialPath(serialPathInput)
     thermalPrinter.serialPath = serialPathInput
+  }
+
+  const applyDrawerIp = () => {
+    setDrawerIp(drawerIpInput)
+  }
+
+  const openDrawer = async () => {
+    setOpeningDrawer(true)
+    try {
+      await thermalPrinter.openCashDrawer(printerType, savedAddress, drawerIp, drawerTcpPort)
+      toast.success('Cash drawer opened')
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Failed to open cash drawer')
+    } finally {
+      setOpeningDrawer(false)
+    }
   }
 
   const scan = async () => {
@@ -259,6 +282,69 @@ export default function PrinterSettings() {
         <Printer size={16} />
         Test Print
       </button>
+
+      {/* ── Cash Drawer ── */}
+      <div className="bg-gray-700 rounded-xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <DollarSign className="text-green-400" size={18} />
+          <p className="text-gray-300 text-sm font-semibold">Cash Drawer</p>
+        </div>
+
+        {/* Auto-open toggle */}
+        <label className="flex items-center justify-between">
+          <span className="text-gray-300 text-sm">Auto-open after payment</span>
+          <button
+            onClick={() => setCashDrawerEnabled(!cashDrawerEnabled)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${cashDrawerEnabled ? 'bg-green-600' : 'bg-gray-600'}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cashDrawerEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </label>
+
+        {cashDrawerEnabled && (
+          <p className="text-gray-400 text-xs">
+            Drawer opens automatically after both cash and card payments.
+          </p>
+        )}
+
+        {/* Windows: printer IP config */}
+        {isWindows && (
+          <div className="space-y-2 pt-1">
+            <p className="text-gray-400 text-xs">
+              Windows: enter your receipt printer's IP address (port 9100 RAW).
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={drawerIpInput}
+                onChange={(e) => setDrawerIpInput(e.target.value)}
+                placeholder="192.168.1.100"
+                className="flex-1 bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-green-500"
+              />
+              <input
+                value={drawerTcpPort}
+                onChange={(e) => setDrawerTcpPort(Number(e.target.value) || 9100)}
+                className="w-20 bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-green-500"
+              />
+              <button
+                onClick={applyDrawerIp}
+                className="px-3 py-2 bg-green-700 hover:bg-green-600 text-white text-xs rounded-lg"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Manual open button */}
+        <button
+          onClick={openDrawer}
+          disabled={openingDrawer}
+          className="w-full py-2 bg-yellow-700 hover:bg-yellow-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl flex items-center justify-center gap-2"
+        >
+          <DollarSign size={16} />
+          {openingDrawer ? 'Opening...' : 'Open Cash Drawer'}
+        </button>
+      </div>
 
       {/* ── BT scan section ── */}
       {isAndroid && printerType === 'bluetooth' && btSupported && (
