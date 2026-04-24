@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '../stores/authStore'
+import { usePrinterStore } from '../stores/printerStore'
+import { thermalPrinter } from '../services/thermalPrinter'
+import { appLog } from '../services/appLogger'
 import { api } from '../services/api'
 import StatusBar from '../components/common/StatusBar'
 import PrinterSettings from '../components/settings/PrinterSettings'
@@ -58,6 +61,7 @@ function formatTime(dateStr: string): string {
 
 export default function ChefPanel({ onLogout }: ChefPanelProps) {
   const { restaurant } = useAuthStore()
+  const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
   const [tab, setTab] = useState<ChefTab>('kitchen')
   const [orders, setOrders] = useState<ChefOrder[]>([])
   const [historyOrders, setHistoryOrders] = useState<ChefOrder[]>([])
@@ -66,6 +70,47 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
   const [loading, setLoading] = useState(false)
   const [markingReady, setMarkingReady] = useState<Set<string>>(new Set())
   const [, setTick] = useState(0)
+
+  // Track printed order IDs so we don't print the same order twice
+  const printedIds = useRef<Set<string>>(new Set())
+  const isFirstLoad = useRef(true)
+
+  const autoPrintOrder = useCallback(async (order: ChefOrder) => {
+    if (!restaurant?.auto_print_enabled) return
+    if (printedIds.current.has(order.id)) return
+    printedIds.current.add(order.id)
+
+    const orderType = (order.order_type ?? 'table').toLowerCase()
+    const tableName = order.table
+      ? `Table ${order.table.table_number}`
+      : orderType === 'online' ? 'Online Order' : 'Takeaway'
+
+    try {
+      await thermalPrinter.printKitchenTicket(
+        {
+          orderNumber: order.order_number ?? order.id.slice(0, 8),
+          orderType,
+          tableName,
+          customerName: order.customer_name ?? undefined,
+          time: new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          items: order.items.map((i) => ({
+            name: i.menu_item_name,
+            qty: i.quantity,
+            note: i.special_instructions ?? undefined,
+          })),
+          note: order.special_instructions ?? undefined,
+        },
+        restaurant.auto_print_copies ?? 1,
+        paperWidth,
+        printerType,
+        savedAddress,
+        printDensity,
+      )
+      appLog.info(`Kitchen ticket printed for order ${order.order_number}`)
+    } catch (e: any) {
+      appLog.warn(`Kitchen ticket print failed: ${e?.message ?? e}`)
+    }
+  }, [restaurant, paperWidth, printerType, savedAddress, printDensity])
 
   const fetchOrders = useCallback(async () => {
     if (!restaurant?.id) return
@@ -99,13 +144,27 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
           })),
         }))
         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
+      // On first load, seed printedIds so we don't auto-print existing orders
+      if (isFirstLoad.current) {
+        mapped.forEach((o) => printedIds.current.add(o.id))
+        isFirstLoad.current = false
+      } else {
+        // Auto-print any new orders not yet printed
+        for (const order of mapped) {
+          if (!printedIds.current.has(order.id)) {
+            autoPrintOrder(order)
+          }
+        }
+      }
+
       setOrders(mapped)
     } catch {
       // silently ignore poll errors
     } finally {
       setLoading(false)
     }
-  }, [restaurant?.id])
+  }, [restaurant?.id, autoPrintOrder])
 
   const fetchHistory = useCallback(async () => {
     if (!restaurant?.id) return

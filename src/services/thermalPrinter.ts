@@ -307,6 +307,71 @@ export function buildLabelBytes(label: LabelData, paperWidth = 32): Uint8Array {
 
 import { appLog } from './appLogger'
 
+// ── Kitchen ticket ────────────────────────────────────────────────────────────
+
+export interface KitchenTicketData {
+  orderNumber: string
+  orderType: string        // 'table' | 'online' | 'takeaway'
+  tableName?: string       // e.g. "Table 5"
+  customerName?: string
+  time: string
+  items: { name: string; qty: number; note?: string }[]
+  note?: string            // order-level special instructions
+}
+
+export function buildKitchenTicketBytes(data: KitchenTicketData, paperWidth = 48): Uint8Array {
+  const W = paperWidth
+  const rows: number[][] = []
+  const add = (...cmds: number[][]) => rows.push(...cmds)
+  const charBytes = (s: string) => Array.from(s.slice(0, W)).map((c) => c.charCodeAt(0))
+  const line = (s: string) => [...charBytes(s), LF]
+  const divider = () => line('-'.repeat(W))
+
+  add(ESCPOS.INIT)
+
+  // Header — large bold source label
+  add(ESCPOS.ALIGN_CENTER, ESCPOS.BOLD_ON, ESCPOS.DOUBLE_HEIGHT)
+  const sourceLabel =
+    data.orderType === 'table'
+      ? (data.tableName ?? 'DINE IN').toUpperCase()
+      : data.orderType === 'online'
+      ? 'ONLINE ORDER'
+      : 'TAKEAWAY'
+  add(line(sourceLabel))
+  add(ESCPOS.NORMAL_SIZE, ESCPOS.BOLD_OFF)
+
+  // Order number + time
+  add(ESCPOS.ALIGN_LEFT)
+  add(line(`#${data.orderNumber}`))
+  add(line(`Time: ${data.time}`))
+  if (data.customerName) add(line(`Name: ${data.customerName}`))
+  add(divider())
+
+  // Items
+  add(ESCPOS.ALIGN_LEFT, ESCPOS.BOLD_ON)
+  for (const item of data.items) {
+    const label = `${item.qty}x ${item.name}`
+    add(line(label.slice(0, W)))
+    add(ESCPOS.BOLD_OFF)
+    if (item.note) add(line(`  > ${item.note}`.slice(0, W)))
+    add(ESCPOS.BOLD_ON)
+  }
+  add(ESCPOS.BOLD_OFF)
+
+  // Order note
+  if (data.note) {
+    add(divider())
+    add(line(`Note: ${data.note}`.slice(0, W)))
+  }
+
+  add(divider())
+  add(ESCPOS.ALIGN_CENTER)
+  add(line('** KITCHEN COPY **'))
+  add(ESCPOS.FEED_3, ESCPOS.CUT_PAPER)
+
+  return new Uint8Array(rows.flat())
+}
+
 // ── Platform helpers ──────────────────────────────────────────────────────────
 
 function isAndroid(): boolean {
@@ -651,10 +716,55 @@ class ThermalPrinterService {
     }
   }
 
+  async printRawBytes(
+    bytes: Uint8Array,
+    printerType: 'serial' | 'bluetooth' = 'serial',
+    savedAddress: string | null = null,
+  ): Promise<void> {
+    const citaq = getCitaqPrinter()
+    const serialPlugin = printerType === 'serial' ? getSerialPlugin() : null
+    const bt = getBtSerial()
+    const android = isAndroid()
+
+    if (citaq) {
+      const b64 = btoa(String.fromCharCode(...bytes))
+      citaq.print(b64)
+      return
+    }
+    if (serialPlugin) {
+      await this.printSerial(bytes, serialPlugin)
+      return
+    }
+    if (bt && printerType === 'bluetooth') {
+      if (!this.connectedAddress && savedAddress) await this.connect(savedAddress)
+      await this.printBluetooth(bytes, bt)
+      return
+    }
+    if (!android) {
+      // Desktop/browser fallback — not applicable for kitchen tickets
+      appLog.warn('printRawBytes: no printer path available on this platform')
+    }
+  }
+
+  async printKitchenTicket(
+    data: KitchenTicketData,
+    copies = 1,
+    paperWidth = 48,
+    printerType: 'serial' | 'bluetooth' = 'serial',
+    savedAddress: string | null = null,
+    printDensity = 3,
+  ): Promise<void> {
+    const ticketBytes = buildKitchenTicketBytes(data, paperWidth)
+    const densityCmd = new Uint8Array(buildDensityCmd(printDensity))
+    const bytes = new Uint8Array(densityCmd.length + ticketBytes.length)
+    bytes.set(densityCmd, 0)
+    bytes.set(ticketBytes, densityCmd.length)
+    for (let i = 0; i < Math.max(1, copies); i++) {
+      await this.printRawBytes(bytes, printerType, savedAddress)
+    }
+  }
+
   /**
-   * Open the cash drawer via ESC/POS cash drawer kick command.
-   *
-   * Android: routes through Citaq serial → SerialPlugin → Bluetooth (same as printReceipt).
    * Windows (Electron): sends raw bytes over TCP to the receipt printer on port 9100.
    *   Requires drawerIp to be configured in printer settings.
    */
