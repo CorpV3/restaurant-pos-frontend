@@ -108,10 +108,10 @@ jobs:
           # caused by FAIL_ON_PROJECT_REPOS mode conflicting with allprojects{} below)
           sed -i 's/RepositoriesMode\.FAIL_ON_PROJECT_REPOS/RepositoriesMode.PREFER_PROJECT/' android/settings.gradle || true
 
-          # Bump Android Gradle Plugin from 8.0.x to 8.3.x (supports compileSdk 34)
-          sed -i "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.3.2/" android/build.gradle || true
+          # Bump Android Gradle Plugin to 8.6.0 (androidx.core 1.16+ requires AGP 8.6+)
+          sed -i "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.6.0/" android/build.gradle || true
 
-          # Bump Gradle wrapper to 8.7 (AGP 8.3.x requires Gradle 8.4+ minimum)
+          # Bump Gradle wrapper to 8.7 (AGP 8.6 minimum; already set but ensure it's correct)
           sed -i 's|gradle-[0-9.]*-all\.zip|gradle-8.7-all.zip|' android/gradle/wrapper/gradle-wrapper.properties || true
 
           # Add SumUp Maven repo to root build.gradle
@@ -122,11 +122,11 @@ jobs:
           echo "    }" >> android/build.gradle
           echo "}" >> android/build.gradle
 
-          # Raise minSdkVersion to 26 (SumUp v7 minimum) and compileSdkVersion to 34
-          # (appcompat 1.7+ requires compileSdk 34; AGP 8.0 max is 33 so bump both together)
+          # Raise minSdkVersion to 26 (SumUp v7 minimum), compileSdk/targetSdk to 35
+          # (androidx.core 1.16+ requires compileSdk 35 + AGP 8.6+)
           sed -i 's/minSdkVersion *= *[0-9]*/minSdkVersion = 26/' android/variables.gradle || true
-          sed -i 's/compileSdkVersion *= *[0-9]*/compileSdkVersion = 34/' android/variables.gradle || true
-          sed -i 's/targetSdkVersion *= *[0-9]*/targetSdkVersion = 34/' android/variables.gradle || true
+          sed -i 's/compileSdkVersion *= *[0-9]*/compileSdkVersion = 35/' android/variables.gradle || true
+          sed -i 's/targetSdkVersion *= *[0-9]*/targetSdkVersion = 35/' android/variables.gradle || true
 
           # Enable coreLibraryDesugaring + add SumUp SDK to app/build.gradle
           echo "" >> android/app/build.gradle
