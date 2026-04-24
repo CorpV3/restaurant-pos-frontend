@@ -111,6 +111,9 @@ jobs:
           # Bump Android Gradle Plugin from 8.0.x to 8.3.x (supports compileSdk 34)
           sed -i "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.3.2/" android/build.gradle || true
 
+          # Bump Gradle wrapper to 8.7 (AGP 8.3.x requires Gradle 8.4+ minimum)
+          sed -i 's|gradle-[0-9.]*-all\.zip|gradle-8.7-all.zip|' android/gradle/wrapper/gradle-wrapper.properties || true
+
           # Add SumUp Maven repo to root build.gradle
           echo "" >> android/build.gradle
           echo "allprojects {" >> android/build.gradle
@@ -192,7 +195,7 @@ jobs:
         run: npm run build
 
       - name: Install Capacitor iOS platform
-        run: npm install @capacitor/ios
+        run: npm install @capacitor/ios@5 --legacy-peer-deps
 
       - name: Add iOS platform
         run: npx cap add ios
