@@ -413,9 +413,13 @@ jobs:
           name: ios-release-ipa
           path: ./artifacts/ios
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (public repo)
         uses: softprops/action-gh-release@v1
         with:
+          repository: CorpV3/restaurant-pos-releases
+          token: ${{ secrets.RELEASES_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           files: |
             artifacts/windows/*.exe
             artifacts/windows/*.msi
@@ -423,27 +427,15 @@ jobs:
             artifacts/ios/*.ipa
           draft: false
           prerelease: false
-          generate_release_notes: true
           body: |
             ## Restaurant POS ${{ github.ref_name }}
 
-            ### Downloads
-            | Platform | File | Notes |
-            |----------|------|-------|
-            | Windows | `RestaurantPOS-Setup.exe` | Run installer, supports auto-update |
-            | Android | `RestaurantPOS-${{ github.ref_name }}-android.apk` | Enable "Install Unknown Apps" in Android Settings |
-            | iPad / iPhone | `RestaurantPOS-${{ github.ref_name }}-ios.ipa` | Sideload via AltStore or Apple Configurator 2 |
-
             ### Direct Download Links
-            - Windows: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RestaurantPOS-Setup.exe
-            - Android: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-android.apk
-            - iOS: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-ios.ipa
-
-            ### iOS Sideloading Instructions
-            The IPA is **unsigned** — install it using one of:
-            - **AltStore** (free): open AltStore on iPhone/iPad → My Apps → + → select IPA
-            - **Apple Configurator 2** (Mac): connect iPad → Add → App → select IPA
-            - **Sideloadly** (Windows/Mac): drag IPA in, connect device, sign in with Apple ID
+            | Platform | Download | Notes |
+            |----------|----------|-------|
+            | Windows | [RestaurantPOS-Setup.exe](https://github.com/CorpV3/restaurant-pos-releases/releases/download/${{ github.ref_name }}/RestaurantPOS-Setup.exe) | Run installer |
+            | Android | [RestaurantPOS-${{ github.ref_name }}-android.apk](https://github.com/CorpV3/restaurant-pos-releases/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-android.apk) | Enable "Install Unknown Apps" first |
+            | iOS / iPad | [RestaurantPOS-${{ github.ref_name }}-ios.ipa](https://github.com/CorpV3/restaurant-pos-releases/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-ios.ipa) | Sideload via AltStore or Sideloadly |
 
             ### Android Thermal Printer Setup
             **Citaq H10-3 (built-in serial printer):**
@@ -455,22 +447,17 @@ jobs:
             2. Open POS app → **Settings → Printer** → select **Bluetooth**
             3. Tap **Scan** → **Use** next to your printer → **Test Print**
 
-            > Compatible with 58mm and 80mm ESC/POS thermal printers
-            > (Citaq H10-3, Sunmi, GOOJPRT, Rongta, Xprinter, Epson TM)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Post download links to job summary
         run: |
-          REPO="${{ github.repository }}"
+          PUB_REPO="CorpV3/restaurant-pos-releases"
           TAG="${{ github.ref_name }}"
-          BASE="https://github.com/${REPO}/releases/download/${TAG}"
-          PAGE="https://github.com/${REPO}/releases/tag/${TAG}"
+          BASE="https://github.com/${PUB_REPO}/releases/download/${TAG}"
+          PAGE="https://github.com/${PUB_REPO}/releases/tag/${TAG}"
 
           # Print to console
           echo ""
           echo "================================================================"
-          echo "  RELEASE ${TAG} - DOWNLOAD LINKS"
+          echo "  RELEASE ${TAG} - PUBLIC DOWNLOAD LINKS"
           echo "================================================================"
           echo "  Windows : ${BASE}/RestaurantPOS-Setup.exe"
           echo "  Android : ${BASE}/RestaurantPOS-${TAG}-android.apk"
@@ -480,7 +467,7 @@ jobs:
 
           # Write clickable links to the GitHub Actions job summary page
           {
-            echo "## Restaurant POS ${TAG} — Download Links"
+            echo "## Restaurant POS ${TAG} — Public Download Links"
             echo ""
             echo "| Platform | Direct Download |"
             echo "|----------|----------------|"
