@@ -416,7 +416,7 @@ jobs:
       - name: Create GitHub Release (public repo)
         uses: softprops/action-gh-release@v1
         with:
-          repository: CorpV3/restaurant-pos-releases
+          repository: CorpV3/restaurant-pos-release
           token: ${{ secrets.RELEASES_TOKEN }}
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
@@ -433,9 +433,9 @@ jobs:
             ### Direct Download Links
             | Platform | Download | Notes |
             |----------|----------|-------|
-            | Windows | [RestaurantPOS-Setup.exe](https://github.com/CorpV3/restaurant-pos-releases/releases/download/${{ github.ref_name }}/RestaurantPOS-Setup.exe) | Run installer |
-            | Android | [RestaurantPOS-${{ github.ref_name }}-android.apk](https://github.com/CorpV3/restaurant-pos-releases/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-android.apk) | Enable "Install Unknown Apps" first |
-            | iOS / iPad | [RestaurantPOS-${{ github.ref_name }}-ios.ipa](https://github.com/CorpV3/restaurant-pos-releases/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-ios.ipa) | Sideload via AltStore or Sideloadly |
+            | Windows | [RestaurantPOS-Setup.exe](https://github.com/CorpV3/restaurant-pos-release/releases/download/${{ github.ref_name }}/RestaurantPOS-Setup.exe) | Run installer |
+            | Android | [RestaurantPOS-${{ github.ref_name }}-android.apk](https://github.com/CorpV3/restaurant-pos-release/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-android.apk) | Enable "Install Unknown Apps" first |
+            | iOS / iPad | [RestaurantPOS-${{ github.ref_name }}-ios.ipa](https://github.com/CorpV3/restaurant-pos-release/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-ios.ipa) | Sideload via AltStore or Sideloadly |
 
             ### Android Thermal Printer Setup
             **Citaq H10-3 (built-in serial printer):**
@@ -449,7 +449,7 @@ jobs:
 
       - name: Post download links to job summary
         run: |
-          PUB_REPO="CorpV3/restaurant-pos-releases"
+          PUB_REPO="CorpV3/restaurant-pos-release"
           TAG="${{ github.ref_name }}"
           BASE="https://github.com/${PUB_REPO}/releases/download/${TAG}"
           PAGE="https://github.com/${PUB_REPO}/releases/tag/${TAG}"
