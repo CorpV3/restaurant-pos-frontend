@@ -54,6 +54,7 @@ jobs:
           retention-days: 30
 
       - name: Echo Windows download URL
+        shell: bash
         run: |
           echo ""
           echo "============================================================"
