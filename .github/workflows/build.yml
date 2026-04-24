@@ -104,37 +104,33 @@ jobs:
 
       - name: Add SumUp SDK dependency
         run: |
-          # Append blocks — Gradle merges multiple allprojects/dependencies blocks safely.
-          # Avoids sed line-corruption issues entirely.
+          # Fix: allow project-level repos (prevents "rootProject on null object" Gradle error
+          # caused by FAIL_ON_PROJECT_REPOS mode conflicting with allprojects{} below)
+          sed -i 's/RepositoriesMode\.FAIL_ON_PROJECT_REPOS/RepositoriesMode.PREFER_PROJECT/' android/settings.gradle || true
 
-          # 1. Add SumUp Maven repo (appended to android/build.gradle)
-          cat >> android/build.gradle << 'GRADLE_EOF'
+          # Add SumUp Maven repo to root build.gradle
+          echo "" >> android/build.gradle
+          echo "allprojects {" >> android/build.gradle
+          echo "    repositories {" >> android/build.gradle
+          echo "        maven { url 'https://maven.sumup.com/releases' }" >> android/build.gradle
+          echo "    }" >> android/build.gradle
+          echo "}" >> android/build.gradle
 
-allprojects {
-    repositories {
-        maven { url 'https://maven.sumup.com/releases' }
-    }
-}
-GRADLE_EOF
-
-          # 2. Raise minSdkVersion to 26 (SumUp v7 minimum) via variables.gradle
+          # Raise minSdkVersion to 26 (SumUp v7 minimum)
           sed -i 's/minSdkVersion *= *[0-9]*/minSdkVersion = 26/' android/variables.gradle || true
 
-          # 3. Enable coreLibraryDesugaring + add SumUp SDK (appended to android/app/build.gradle)
-          cat >> android/app/build.gradle << 'APP_EOF'
+          # Enable coreLibraryDesugaring + add SumUp SDK to app/build.gradle
+          echo "" >> android/app/build.gradle
+          echo "android {" >> android/app/build.gradle
+          echo "    compileOptions {" >> android/app/build.gradle
+          echo "        coreLibraryDesugaringEnabled true" >> android/app/build.gradle
+          echo "    }" >> android/app/build.gradle
+          echo "}" >> android/app/build.gradle
+          echo "dependencies {" >> android/app/build.gradle
+          echo "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'" >> android/app/build.gradle
+          echo "    implementation 'com.sumup:merchant-sdk:7.0.0'" >> android/app/build.gradle
+          echo "}" >> android/app/build.gradle
 
-android {
-    compileOptions {
-        coreLibraryDesugaringEnabled true
-    }
-}
-dependencies {
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
-    implementation 'com.sumup:merchant-sdk:7.0.0'
-}
-APP_EOF
-
-      # ── Build debug APK — always ───────────────────────────────────────────
       - name: Build debug APK
         run: |
           cd android
@@ -164,12 +160,95 @@ APP_EOF
           retention-days: 90
 
 # ─────────────────────────────────────────────────────────────────────────────
-# JOB 3 — GitHub Release
-#          Publishes BOTH Windows .exe AND Android .apk to the same release
+# JOB 3 — iOS IPA (Capacitor, unsigned — sideload via AltStore / Configurator)
+#          Targets iOS 13+ for broad iPad compatibility (Air 2, mini 4, etc.)
+# ─────────────────────────────────────────────────────────────────────────────
+  build-ios:
+    name: iOS IPA
+    runs-on: macos-latest
+    env:
+      CI: 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build web assets
+        run: npm run build
+
+      - name: Add iOS platform
+        run: npx cap add ios
+
+      - name: Sync Capacitor
+        run: npx cap sync ios
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd ios/App
+          pod install
+
+      - name: Set minimum deployment target to iOS 13
+        run: |
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 13.0/g' \
+            ios/App/App.xcodeproj/project.pbxproj
+
+      - name: Build iOS archive (unsigned)
+        run: |
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -archivePath "$PWD/App.xcarchive" \
+            -destination "generic/platform=iOS" \
+            IPHONEOS_DEPLOYMENT_TARGET=13.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            archive 2>&1 | tail -100
+
+      - name: Package unsigned IPA
+        run: |
+          APP=$(find App.xcarchive/Products/Applications -name '*.app' | head -1)
+          mkdir -p Payload
+          cp -r "$APP" Payload/App.app
+          VERSION="${{ github.ref_name }}"
+          [ -z "$VERSION" ] && VERSION="dev"
+          zip -r "RestaurantPOS-${VERSION}-ios.ipa" Payload/
+          rm -rf Payload
+          ls -lh RestaurantPOS-*.ipa
+
+      - name: Upload iOS debug artifact (branch)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-debug-ipa
+          path: "*.ipa"
+          retention-days: 14
+
+      - name: Upload iOS release artifact (tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-ipa
+          path: "RestaurantPOS-*-ios.ipa"
+          retention-days: 90
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 4 — GitHub Release
+#          Publishes Windows .exe, Android .apk, and iOS .ipa to the release
 # ─────────────────────────────────────────────────────────────────────────────
   release:
     name: Publish GitHub Release
-    needs: [build-windows, build-android]
+    needs: [build-windows, build-android, build-ios]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
@@ -186,6 +265,12 @@ APP_EOF
           name: android-release-apk
           path: ./artifacts/android
 
+      - name: Download iOS IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-release-ipa
+          path: ./artifacts/ios
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -193,6 +278,7 @@ APP_EOF
             artifacts/windows/*.exe
             artifacts/windows/*.msi
             artifacts/android/*.apk
+            artifacts/ios/*.ipa
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -203,21 +289,53 @@ APP_EOF
             | Platform | File | Notes |
             |----------|------|-------|
             | Windows | `RestaurantPOS-Setup.exe` | Run installer, supports auto-update |
-            | Android | `RestaurantPOS-${{ github.ref_name }}-android.apk` | Sideload — enable "Install Unknown Apps" in Android settings |
+            | Android | `RestaurantPOS-${{ github.ref_name }}-android.apk` | Enable "Install Unknown Apps" in Android Settings |
+            | iPad / iPhone | `RestaurantPOS-${{ github.ref_name }}-ios.ipa` | Sideload via AltStore or Apple Configurator 2 |
+
+            ### Direct Download Links
+            - Windows: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RestaurantPOS-Setup.exe
+            - Android: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-android.apk
+            - iOS: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-ios.ipa
+
+            ### iOS Sideloading Instructions
+            The IPA is **unsigned** — install it using one of:
+            - **AltStore** (free): open AltStore on iPhone/iPad → My Apps → + → select IPA
+            - **Apple Configurator 2** (Mac): connect iPad → Add → App → select IPA
+            - **Sideloadly** (Windows/Mac): drag IPA in, connect device, sign in with Apple ID
 
             ### Android Thermal Printer Setup
             **Citaq H10-3 (built-in serial printer):**
-            - Internal printer on `/dev/ttyS1` is used automatically — no setup needed
             - Open POS app → **Settings → Printer** → select **Serial (Built-in)**
-            - Tap **Test Print** to verify
+            - Default port `/dev/ttyS1` — tap **Test Print** to verify
 
             **External Bluetooth printer:**
             1. Pair printer in **Android Settings → Bluetooth**
             2. Open POS app → **Settings → Printer** → select **Bluetooth**
-            3. Tap **Scan**, then **Use** next to your printer
-            4. Tap **Test Print** to verify
+            3. Tap **Scan** → **Use** next to your printer → **Test Print**
 
             > Compatible with 58mm and 80mm ESC/POS thermal printers
-            > (Citaq H10-3 built-in, Sunmi, GOOJPRT, Rongta, Xprinter, Epson TM)
+            > (Citaq H10-3, Sunmi, GOOJPRT, Rongta, Xprinter, Epson TM)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Echo download links
+        run: |
+          REPO="${{ github.repository }}"
+          TAG="${{ github.ref_name }}"
+          BASE="https://github.com/${REPO}/releases/download/${TAG}"
+          echo ""
+          echo "================================================================"
+          echo "  RELEASE ${TAG} - DOWNLOAD LINKS"
+          echo "================================================================"
+          echo "  Windows EXE:"
+          echo "  ${BASE}/RestaurantPOS-Setup.exe"
+          echo ""
+          echo "  Android APK:"
+          echo "  ${BASE}/RestaurantPOS-${TAG}-android.apk"
+          echo ""
+          echo "  iOS IPA:"
+          echo "  ${BASE}/RestaurantPOS-${TAG}-ios.ipa"
+          echo ""
+          echo "  Release page:"
+          echo "  https://github.com/${REPO}/releases/tag/${TAG}"
+          echo "================================================================"
