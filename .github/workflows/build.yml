@@ -116,74 +116,16 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Add SumUp SDK dependency
-        run: |
-          # Fix: allow project-level repos (prevents "rootProject on null object" Gradle error
-          # caused by FAIL_ON_PROJECT_REPOS mode conflicting with allprojects{} below)
-          sed -i 's/RepositoriesMode\.FAIL_ON_PROJECT_REPOS/RepositoriesMode.PREFER_PROJECT/' android/settings.gradle || true
-
-          # Bump Android Gradle Plugin to 8.6.0 (androidx.core 1.16+ requires AGP 8.6+)
-          sed -i "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.6.0/" android/build.gradle || true
-
-          # Bump Gradle wrapper to 8.7 (AGP 8.6 minimum; already set but ensure it's correct)
-          sed -i 's|gradle-[0-9.]*-all\.zip|gradle-8.7-all.zip|' android/gradle/wrapper/gradle-wrapper.properties || true
-
-          # Add SumUp Maven repo to root build.gradle
-          echo "" >> android/build.gradle
-          echo "allprojects {" >> android/build.gradle
-          echo "    repositories {" >> android/build.gradle
-          echo "        maven { url 'https://maven.sumup.com/releases' }" >> android/build.gradle
-          echo "    }" >> android/build.gradle
-          echo "}" >> android/build.gradle
-
-          # Raise minSdkVersion to 26 (SumUp v7 minimum), compileSdk/targetSdk to 35
-          # (androidx.core 1.16+ requires compileSdk 35 + AGP 8.6+)
-          sed -i 's/minSdkVersion *= *[0-9]*/minSdkVersion = 26/' android/variables.gradle || true
-          sed -i 's/compileSdkVersion *= *[0-9]*/compileSdkVersion = 35/' android/variables.gradle || true
-          sed -i 's/targetSdkVersion *= *[0-9]*/targetSdkVersion = 35/' android/variables.gradle || true
-
-          # Enable coreLibraryDesugaring, arm64-v8a only, multiDex, and SumUp SDK
-          echo "" >> android/app/build.gradle
-          echo "android {" >> android/app/build.gradle
-          echo "    defaultConfig {" >> android/app/build.gradle
-          echo "        multiDexEnabled true" >> android/app/build.gradle
-          echo "        ndk {" >> android/app/build.gradle
-          echo "            abiFilters 'arm64-v8a'" >> android/app/build.gradle
-          echo "        }" >> android/app/build.gradle
-          echo "    }" >> android/app/build.gradle
-          echo "    compileOptions {" >> android/app/build.gradle
-          echo "        coreLibraryDesugaringEnabled true" >> android/app/build.gradle
-          echo "    }" >> android/app/build.gradle
-          echo "}" >> android/app/build.gradle
-          echo "dependencies {" >> android/app/build.gradle
-          echo "    implementation 'androidx.multidex:multidex:2.0.1'" >> android/app/build.gradle
-          echo "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'" >> android/app/build.gradle
-          echo "    implementation 'com.sumup:merchant-sdk:7.0.0'" >> android/app/build.gradle
-          echo "}" >> android/app/build.gradle
-
-      - name: Generate release keystore
-        run: |
-          keytool -genkeypair -v \
-            -keystore android/release.keystore \
-            -alias pos \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass android123 -keypass android123 \
-            -dname "CN=Restaurant POS, O=CorpV3, C=GB"
-
-      - name: Build release APK
+      - name: Build debug APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon \
-            -Pandroid.injected.signing.store.file="$PWD/release.keystore" \
-            -Pandroid.injected.signing.store.password=android123 \
-            -Pandroid.injected.signing.key.alias=pos \
-            -Pandroid.injected.signing.key.password=android123
+          ./gradlew assembleDebug --no-daemon
 
       - name: Rename APK with version tag
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          APK=$(find android -name '*-release*.apk' | head -1)
+          APK=$(find android -name '*-debug*.apk' | head -1)
           cp "$APK" "RestaurantPOS-${{ github.ref_name }}-android.apk"
 
       - name: Upload Android debug artifact (branch)
