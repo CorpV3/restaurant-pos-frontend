@@ -213,21 +213,104 @@ jobs:
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 13.0/g' \
             ios/App/App.xcodeproj/project.pbxproj
 
-      - name: Build iOS archive (unsigned)
+      - name: Add required iOS permissions to Info.plist
         run: |
-          xcodebuild \
-            -workspace ios/App/App.xcworkspace \
-            -scheme App \
-            -configuration Release \
-            -archivePath "$PWD/App.xcarchive" \
-            -destination "generic/platform=iOS" \
-            IPHONEOS_DEPLOYMENT_TARGET=13.0 \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            archive 2>&1 | tail -100
+          PLIST="ios/App/App/Info.plist"
+          # Bluetooth — needed for thermal printer
+          /usr/libexec/PlistBuddy -c \
+            "Add :NSBluetoothAlwaysUsageDescription string 'Required to connect to Bluetooth thermal printers'" \
+            "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c \
+            "Add :NSBluetoothPeripheralUsageDescription string 'Required to connect to Bluetooth thermal printers'" \
+            "$PLIST" 2>/dev/null || true
+          # Local network — needed to reach restaurant server on LAN
+          /usr/libexec/PlistBuddy -c \
+            "Add :NSLocalNetworkUsageDescription string 'Required to connect to the restaurant POS server'" \
+            "$PLIST" 2>/dev/null || true
+          # Camera — QR code scanning
+          /usr/libexec/PlistBuddy -c \
+            "Add :NSCameraUsageDescription string 'Used for scanning QR codes'" \
+            "$PLIST" 2>/dev/null || true
 
-      - name: Package unsigned IPA
+      - name: Import signing certificate (if configured)
+        if: env.APPLE_CERTIFICATE_BASE64 != ''
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > certificate.p12
+          security create-keychain -p "temp" build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "temp" build.keychain
+          security list-keychains -d user -s build.keychain
+
+      - name: Import provisioning profile (if configured)
+        if: env.APPLE_PROVISIONING_PROFILE != ''
+        env:
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+        run: |
+          echo "$APPLE_PROVISIONING_PROFILE" | base64 --decode > profile.mobileprovision
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: Build iOS archive
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE_BASE64" ] && [ -n "$DEVELOPMENT_TEAM" ]; then
+            echo "Building signed IPA..."
+            xcodebuild \
+              -workspace ios/App/App.xcworkspace \
+              -scheme App \
+              -configuration Release \
+              -archivePath "$PWD/App.xcarchive" \
+              -destination "generic/platform=iOS" \
+              IPHONEOS_DEPLOYMENT_TARGET=13.0 \
+              CODE_SIGN_STYLE=Automatic \
+              DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+              archive 2>&1 | tail -100
+          else
+            echo "No signing secrets found — building unsigned IPA (install via AltStore)"
+            xcodebuild \
+              -workspace ios/App/App.xcworkspace \
+              -scheme App \
+              -configuration Release \
+              -archivePath "$PWD/App.xcarchive" \
+              -destination "generic/platform=iOS" \
+              IPHONEOS_DEPLOYMENT_TARGET=13.0 \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO \
+              archive 2>&1 | tail -100
+          fi
+
+      - name: Export signed IPA (if signed)
+        if: env.APPLE_CERTIFICATE_BASE64 != ''
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          [ -z "$VERSION" ] && VERSION="dev"
+          cat > exportOptions.plist << 'PLIST_EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>ad-hoc</string>
+            <key>compileBitcode</key><false/>
+          </dict></plist>
+          PLIST_EOF
+          xcodebuild -exportArchive \
+            -archivePath "$PWD/App.xcarchive" \
+            -exportOptionsPlist exportOptions.plist \
+            -exportPath "$PWD/ipa" 2>&1 | tail -30
+          cp ipa/*.ipa "RestaurantPOS-${VERSION}-ios.ipa" || true
+
+      - name: Package unsigned IPA (fallback)
+        if: env.APPLE_CERTIFICATE_BASE64 == ''
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
         run: |
           APP=$(find App.xcarchive/Products/Applications -name '*.app' | head -1)
           mkdir -p Payload
