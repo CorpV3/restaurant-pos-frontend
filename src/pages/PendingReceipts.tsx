@@ -118,6 +118,8 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
 
   const [printingLabels, setPrintingLabels] = useState(false)
   const [printingLabelOrderId, setPrintingLabelOrderId] = useState<string | null>(null)
+  const [printingKitchenOrderId, setPrintingKitchenOrderId] = useState<string | null>(null)
+  const [openingDrawer, setOpeningDrawer] = useState(false)
 
   const handlePrintLabelsForOrder = async (order: PendingOrder) => {
     setPrintingLabelOrderId(order.id)
@@ -136,6 +138,53 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
       toast.error(e?.message ?? 'Label print failed')
     }
     setPrintingLabelOrderId(null)
+  }
+
+  const handlePrintKitchenTicket = async (order: PendingOrder) => {
+    setPrintingKitchenOrderId(order.id)
+    appLog.info(`Kitchen ticket (manual): order=${order.order_number ?? order.id.slice(0,8)}`)
+    try {
+      await thermalPrinter.printKitchenTicket(
+        {
+          orderNumber: order.order_number ?? order.id.slice(0, 8),
+          orderType: (order.order_type ?? 'table').toLowerCase(),
+          tableName: tableName(order),
+          customerName: order.customer_name ?? undefined,
+          time: format(new Date(order.created_at), 'HH:mm'),
+          items: order.items.map((i) => ({
+            name: i.menu_item_name,
+            qty: i.quantity,
+            note: i.special_instructions ?? undefined,
+          })),
+        },
+        1,
+        paperWidth,
+        printerType,
+        savedAddress,
+        printDensity,
+      )
+      appLog.info('Kitchen ticket printed OK')
+      toast.success('Kitchen ticket printed')
+    } catch (e: any) {
+      appLog.error(`Kitchen ticket failed: ${e?.message ?? e}`)
+      toast.error(e?.message ?? 'Kitchen ticket print failed')
+    }
+    setPrintingKitchenOrderId(null)
+  }
+
+  const handleOpenCashDrawer = async () => {
+    setOpeningDrawer(true)
+    appLog.info('Cash drawer open request')
+    try {
+      const { drawerIp, drawerTcpPort } = usePrinterStore.getState()
+      await thermalPrinter.openCashDrawer(printerType, savedAddress, drawerIp, drawerTcpPort)
+      appLog.info('Cash drawer opened OK')
+      toast.success('Cash drawer opened')
+    } catch (e: any) {
+      appLog.error(`Cash drawer failed: ${e?.message ?? e}`)
+      toast.error(e?.message ?? 'Failed to open cash drawer')
+    }
+    setOpeningDrawer(false)
   }
 
   const handlePrintLabels = async () => {
@@ -417,6 +466,22 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
                       className="py-2 bg-yellow-900/40 hover:bg-yellow-800/60 text-yellow-300 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
                     >
                       {printingLabelOrderId === order.id ? 'Printing...' : '🏷 Labels'}
+                    </button>
+                    <button
+                      onClick={() => handlePrintKitchenTicket(order)}
+                      disabled={printingKitchenOrderId === order.id}
+                      className="py-2 bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+                    >
+                      {printingKitchenOrderId === order.id ? 'Printing...' : '🍳 Kitchen'}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <button
+                      onClick={handleOpenCashDrawer}
+                      disabled={openingDrawer}
+                      className="py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+                    >
+                      {openingDrawer ? '...' : '🪙 Cash Drawer'}
                     </button>
                     <button
                       onClick={() => setSelectedOrder(order)}

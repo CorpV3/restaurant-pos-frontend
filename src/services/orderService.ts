@@ -127,14 +127,18 @@ export interface PendingOrderItem {
   menu_item_name: string
   quantity: number
   unit_price: number
+  special_instructions?: string
 }
 
 export interface PendingOrder {
   id: string
+  order_number?: string
+  order_type?: string
   status: string
   total_amount: number
   table_id: string | null
   table?: { id: string; table_number: string | number; status: string } | null
+  customer_name?: string
   created_at: string
   items: PendingOrderItem[]
 }

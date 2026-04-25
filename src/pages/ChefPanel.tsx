@@ -76,14 +76,24 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
   const isFirstLoad = useRef(true)
 
   const autoPrintOrder = useCallback(async (order: ChefOrder) => {
-    if (!restaurant?.auto_print_enabled) return
-    if (printedIds.current.has(order.id)) return
+    appLog.info(`autoPrint: order=${order.order_number ?? order.id.slice(0,8)} auto_print_enabled=${restaurant?.auto_print_enabled} printerType=${printerType} savedAddress=${savedAddress ?? 'none'}`)
+
+    if (!restaurant?.auto_print_enabled) {
+      appLog.info('autoPrint: skipped — auto_print_enabled is false/undefined')
+      return
+    }
+    if (printedIds.current.has(order.id)) {
+      appLog.info(`autoPrint: skipped — already printed order ${order.order_number}`)
+      return
+    }
     printedIds.current.add(order.id)
 
     const orderType = (order.order_type ?? 'table').toLowerCase()
     const tableName = order.table
       ? `Table ${order.table.table_number}`
       : orderType === 'online' ? 'Online Order' : 'Takeaway'
+
+    appLog.info(`autoPrint: printing — order=${order.order_number} type=${orderType} table=${tableName} items=${order.items.length} copies=${restaurant.auto_print_copies ?? 1} paperWidth=${paperWidth}`)
 
     try {
       await thermalPrinter.printKitchenTicket(
@@ -106,9 +116,9 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
         savedAddress,
         printDensity,
       )
-      appLog.info(`Kitchen ticket printed for order ${order.order_number}`)
+      appLog.info(`autoPrint: SUCCESS — kitchen ticket printed for order ${order.order_number}`)
     } catch (e: any) {
-      appLog.warn(`Kitchen ticket print failed: ${e?.message ?? e}`)
+      appLog.warn(`autoPrint: FAILED — order=${order.order_number} error=${e?.message ?? e}`)
     }
   }, [restaurant, paperWidth, printerType, savedAddress, printDensity])
 
@@ -149,12 +159,15 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
       if (isFirstLoad.current) {
         mapped.forEach((o) => printedIds.current.add(o.id))
         isFirstLoad.current = false
+        appLog.info(`autoPrint: first load — seeded ${mapped.length} existing orders, will print new ones from next poll`)
       } else {
         // Auto-print any new orders not yet printed
-        for (const order of mapped) {
-          if (!printedIds.current.has(order.id)) {
-            autoPrintOrder(order)
-          }
+        const newOrders = mapped.filter((o) => !printedIds.current.has(o.id))
+        if (newOrders.length > 0) {
+          appLog.info(`autoPrint: poll found ${newOrders.length} new order(s)`)
+        }
+        for (const order of newOrders) {
+          autoPrintOrder(order)
         }
       }
 
