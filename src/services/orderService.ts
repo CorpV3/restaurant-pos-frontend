@@ -178,6 +178,49 @@ export async function fetchPendingOrders(restaurantId: string): Promise<PendingO
   })
 }
 
+/** Fetch orders that need to be physically served (preparing/pending/confirmed/ready) */
+export async function fetchActiveOrders(restaurantId: string): Promise<PendingOrder[]> {
+  const [tablesRes, ...statusResults] = await Promise.all([
+    api.get(`/api/v1/restaurants/${restaurantId}/tables`).catch(() => ({ data: [] })),
+    api.get(`/api/v1/restaurants/${restaurantId}/orders`, { params: { status: 'pending', limit: 50 } }),
+    api.get(`/api/v1/restaurants/${restaurantId}/orders`, { params: { status: 'confirmed', limit: 50 } }),
+    api.get(`/api/v1/restaurants/${restaurantId}/orders`, { params: { status: 'preparing', limit: 50 } }),
+    api.get(`/api/v1/restaurants/${restaurantId}/orders`, { params: { status: 'ready', limit: 50 } }),
+  ])
+
+  const tables: any[] = Array.isArray(tablesRes.data) ? tablesRes.data : (tablesRes.data?.tables ?? [])
+  const tableMap = Object.fromEntries(tables.map((t: any) => [t.id, t]))
+
+  const allRaw: any[] = statusResults.flatMap((r) =>
+    Array.isArray(r.data) ? r.data : (r.data?.orders ?? [])
+  )
+
+  return allRaw.map((o) => {
+    const tableData = o.table_id ? tableMap[o.table_id] : null
+    return {
+      id: o.id,
+      order_number: o.order_number,
+      order_type: o.order_type,
+      status: o.status,
+      total_amount: o.total_amount ?? o.total ?? 0,
+      table_id: o.table_id ?? null,
+      table: tableData
+        ? { id: tableData.id, table_number: tableData.table_number, status: tableData.status }
+        : null,
+      customer_name: o.customer_name,
+      created_at: o.created_at,
+      items: (o.items ?? []).map((item: any) => ({
+        id: item.id,
+        menu_item_id: item.menu_item_id,
+        menu_item_name: item.menu_item_name ?? item.item_name ?? 'Unknown',
+        quantity: item.quantity,
+        unit_price: item.unit_price ?? item.item_price ?? 0,
+        special_instructions: item.special_instructions,
+      })),
+    }
+  })
+}
+
 export async function getReports(
   restaurantId: string,
   startDate: string,

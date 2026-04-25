@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/authStore'
 import { usePrinterStore } from '../stores/printerStore'
 import { thermalPrinter } from '../services/thermalPrinter'
 import { appLog } from '../services/appLogger'
-import { fetchPendingOrders, refundOrder, type PendingOrder } from '../services/orderService'
+import { fetchPendingOrders, fetchActiveOrders, refundOrder, type PendingOrder } from '../services/orderService'
 import { api } from '../services/api'
 import PaymentModal from '../components/payment/PaymentModal'
 import toast from 'react-hot-toast'
@@ -24,7 +24,9 @@ interface CompletedReceipt {
 export default function PendingReceipts({ onCountChange }: PendingReceiptsProps) {
   const { restaurant } = useAuthStore()
   const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
-  const [orders, setOrders] = useState<PendingOrder[]>([])
+  const [orders, setOrders] = useState<PendingOrder[]>([])        // served — awaiting payment
+  const [activeOrders, setActiveOrders] = useState<PendingOrder[]>([]) // preparing — needs serving
+  const [markingServedId, setMarkingServedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<PendingOrder | null>(null)
   const [completedReceipt, setCompletedReceipt] = useState<CompletedReceipt | null>(null)
@@ -37,22 +39,49 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
 
   const currencySymbol = restaurant?.currency_symbol || '£'
 
+  const noChefDisplay = restaurant?.chef_display_enabled === false
+
   const load = useCallback(
     async (silent = false) => {
       if (!restaurant?.id) return
       if (!silent) setLoading(true)
       try {
-        const data = await fetchPendingOrders(restaurant.id)
-        setOrders(data)
-        onCountChange(data.length)
+        const fetches: Promise<void>[] = [
+          fetchPendingOrders(restaurant.id).then((data) => {
+            setOrders(data)
+            onCountChange(data.length)
+          }),
+        ]
+        if (noChefDisplay) {
+          fetches.push(
+            fetchActiveOrders(restaurant.id).then((data) => setActiveOrders(data))
+          )
+        }
+        await Promise.all(fetches)
       } catch {
         if (!silent) toast.error('Failed to load pending receipts')
       } finally {
         if (!silent) setLoading(false)
       }
     },
-    [restaurant?.id, onCountChange]
+    [restaurant?.id, onCountChange, noChefDisplay]
   )
+
+  const handleMarkServed = async (order: PendingOrder) => {
+    setMarkingServedId(order.id)
+    try {
+      await api.patch(`/api/v1/orders/${order.id}/status`, { status: 'served' })
+      appLog.info(`Marked served: ${order.order_number ?? order.id.slice(0, 8)}`)
+      toast.success(`${tableName(order)} marked as served`)
+      load(true)
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Failed to mark served'
+      appLog.error(`Mark served failed: ${msg}`)
+      toast.error(msg)
+    } finally {
+      setMarkingServedId(null)
+    }
+  }
 
   // Initial load + poll
   useEffect(() => {
@@ -382,12 +411,118 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
     )
   }
 
+  // Reusable order card — shared between active and served sections
+  const renderOrderCard = (order: PendingOrder, mode: 'active' | 'served') => (
+    <div
+      key={order.id}
+      className={`border rounded-xl p-4 flex flex-col ${
+        mode === 'active'
+          ? 'bg-gray-800 border-blue-700/50'
+          : 'bg-gray-800 border-gray-700'
+      }`}
+    >
+      {/* Table badge + time */}
+      <div className="flex items-center justify-between mb-3">
+        <span className={`text-sm font-bold px-3 py-1 rounded-lg border ${
+          mode === 'active'
+            ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+            : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+        }`}>
+          {tableName(order)}
+        </span>
+        <span className="text-gray-500 text-xs">
+          {format(new Date(order.created_at), 'HH:mm')}
+        </span>
+      </div>
+
+      {/* Items */}
+      <div className="space-y-1 mb-3 min-h-[48px]">
+        {order.items.slice(0, 3).map((item) => (
+          <div key={item.id} className="flex justify-between text-sm">
+            <span className="text-gray-300 truncate mr-2">
+              {item.quantity}× {item.menu_item_name}
+            </span>
+            <span className="text-gray-500 flex-shrink-0">
+              {currencySymbol}{(item.unit_price * item.quantity).toFixed(2)}
+            </span>
+          </div>
+        ))}
+        {order.items.length > 3 && (
+          <p className="text-gray-500 text-xs">+{order.items.length - 3} more items</p>
+        )}
+      </div>
+
+      {/* Total */}
+      <div className="border-t border-gray-700 pt-3 flex items-center justify-between mb-3">
+        <span className="text-gray-400 text-sm">Total</span>
+        <span className="text-orange-400 text-xl font-bold">
+          {currencySymbol}{order.total_amount.toFixed(2)}
+        </span>
+      </div>
+
+      {mode === 'active' ? (
+        /* Active order actions: reprint ticket + mark served */
+        <div className="grid grid-cols-2 gap-2 mt-auto">
+          <button
+            onClick={() => handlePrintKitchenTicket(order)}
+            disabled={printingKitchenOrderId === order.id}
+            className="py-2.5 bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+          >
+            {printingKitchenOrderId === order.id ? 'Printing...' : '🍳 Reprint'}
+          </button>
+          <button
+            onClick={() => handleMarkServed(order)}
+            disabled={markingServedId === order.id}
+            className="py-2.5 bg-green-600 hover:bg-green-500 text-white text-sm font-bold rounded-lg disabled:opacity-50 transition-colors"
+          >
+            {markingServedId === order.id ? 'Saving...' : '✓ Mark Served'}
+          </button>
+        </div>
+      ) : (
+        /* Served order actions: labels, kitchen reprint, cash drawer, collect payment */
+        <>
+          <div className="grid grid-cols-2 gap-2 mt-auto">
+            <button
+              onClick={() => handlePrintLabelsForOrder(order)}
+              disabled={printingLabelOrderId === order.id}
+              className="py-2 bg-yellow-900/40 hover:bg-yellow-800/60 text-yellow-300 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+            >
+              {printingLabelOrderId === order.id ? 'Printing...' : '🏷 Labels'}
+            </button>
+            <button
+              onClick={() => handlePrintKitchenTicket(order)}
+              disabled={printingKitchenOrderId === order.id}
+              className="py-2 bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+            >
+              {printingKitchenOrderId === order.id ? 'Printing...' : '🍳 Kitchen'}
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <button
+              onClick={handleOpenCashDrawer}
+              disabled={openingDrawer}
+              className="py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+            >
+              {openingDrawer ? '...' : '🪙 Cash Drawer'}
+            </button>
+            <button
+              onClick={() => setSelectedOrder(order)}
+              className="py-2 bg-orange-500/10 hover:bg-orange-500 text-orange-400 hover:text-white text-sm font-medium rounded-lg transition-all"
+            >
+              Collect Payment
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+
   return (
     <div className="flex-1 flex flex-col bg-gray-900 overflow-hidden">
       {/* Header */}
       <div className="flex-shrink-0 p-4 border-b border-gray-700 flex items-center gap-3">
         <h2 className="text-white font-semibold text-base flex-1">
-          Pending Receipts
+          {noChefDisplay ? 'Orders' : 'Pending Receipts'}
           {orders.length > 0 && (
             <span className="ml-2 bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
               {orders.length}
@@ -404,97 +539,68 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {orders.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <div className="w-14 h-14 rounded-xl bg-gray-700 flex items-center justify-center mb-3">
-              <span className="text-gray-400 text-lg font-bold">REC</span>
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+
+        {/* ── Needs Serving section (only when chef display disabled) ── */}
+        {noChefDisplay && (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="text-blue-300 text-sm font-bold uppercase tracking-wide">Needs Serving</h3>
+              {activeOrders.length > 0 && (
+                <span className="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                  {activeOrders.length}
+                </span>
+              )}
             </div>
-            <p className="text-lg font-medium">No pending receipts</p>
-            <p className="text-sm mt-1">Auto-refreshes every 10 seconds</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {orders
-              .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-              .map((order) => (
-                <div
-                  key={order.id}
-                  className="bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-col"
-                >
-                  {/* Table badge + time */}
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 text-sm font-bold px-3 py-1 rounded-lg">
-                      {tableName(order)}
-                    </span>
-                    <span className="text-gray-500 text-xs">
-                      {format(new Date(order.created_at), 'HH:mm')}
-                    </span>
-                  </div>
-
-                  {/* Items */}
-                  <div className="space-y-1 mb-3 min-h-[48px]">
-                    {order.items.slice(0, 3).map((item) => (
-                      <div key={item.id} className="flex justify-between text-sm">
-                        <span className="text-gray-300 truncate mr-2">
-                          {item.quantity}× {item.menu_item_name}
-                        </span>
-                        <span className="text-gray-500 flex-shrink-0">
-                          {currencySymbol}{(item.unit_price * item.quantity).toFixed(2)}
-                        </span>
-                      </div>
-                    ))}
-                    {order.items.length > 3 && (
-                      <p className="text-gray-500 text-xs">
-                        +{order.items.length - 3} more items
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Total */}
-                  <div className="border-t border-gray-700 pt-3 flex items-center justify-between mb-3">
-                    <span className="text-gray-400 text-sm">Total</span>
-                    <span className="text-orange-400 text-xl font-bold">
-                      {currencySymbol}{order.total_amount.toFixed(2)}
-                    </span>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="grid grid-cols-2 gap-2 mt-auto">
-                    <button
-                      onClick={() => handlePrintLabelsForOrder(order)}
-                      disabled={printingLabelOrderId === order.id}
-                      className="py-2 bg-yellow-900/40 hover:bg-yellow-800/60 text-yellow-300 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
-                    >
-                      {printingLabelOrderId === order.id ? 'Printing...' : '🏷 Labels'}
-                    </button>
-                    <button
-                      onClick={() => handlePrintKitchenTicket(order)}
-                      disabled={printingKitchenOrderId === order.id}
-                      className="py-2 bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
-                    >
-                      {printingKitchenOrderId === order.id ? 'Printing...' : '🍳 Kitchen'}
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <button
-                      onClick={handleOpenCashDrawer}
-                      disabled={openingDrawer}
-                      className="py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
-                    >
-                      {openingDrawer ? '...' : '🪙 Cash Drawer'}
-                    </button>
-                    <button
-                      onClick={() => setSelectedOrder(order)}
-                      className="py-2 bg-orange-500/10 hover:bg-orange-500 text-orange-400 hover:text-white text-sm font-medium rounded-lg transition-all"
-                    >
-                      Collect Payment
-                    </button>
-                  </div>
-                </div>
-              ))}
+            {activeOrders.length === 0 ? (
+              <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 text-center text-gray-500 text-sm">
+                No active orders — all clear
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {activeOrders
+                  .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                  .map((order) => renderOrderCard(order, 'active'))}
+              </div>
+            )}
           </div>
         )}
+
+        {/* ── Awaiting Payment section ── */}
+        <div>
+          {noChefDisplay && (
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="text-orange-400 text-sm font-bold uppercase tracking-wide">Awaiting Payment</h3>
+              {orders.length > 0 && (
+                <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                  {orders.length}
+                </span>
+              )}
+            </div>
+          )}
+          {orders.length === 0 ? (
+            noChefDisplay ? (
+              <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 text-center text-gray-500 text-sm">
+                No orders awaiting payment
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-gray-500 py-16">
+                <div className="w-14 h-14 rounded-xl bg-gray-700 flex items-center justify-center mb-3">
+                  <span className="text-gray-400 text-lg font-bold">REC</span>
+                </div>
+                <p className="text-lg font-medium">No pending receipts</p>
+                <p className="text-sm mt-1">Auto-refreshes every 10 seconds</p>
+              </div>
+            )
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {orders
+                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                .map((order) => renderOrderCard(order, 'served'))}
+            </div>
+          )}
+        </div>
+
       </div>
 
       {selectedOrder && (
