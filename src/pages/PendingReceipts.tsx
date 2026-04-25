@@ -8,6 +8,7 @@ import { fetchPendingOrders, refundOrder, type PendingOrder } from '../services/
 import { api } from '../services/api'
 import PaymentModal from '../components/payment/PaymentModal'
 import toast from 'react-hot-toast'
+import { ledService } from '../services/ledService'
 
 const POLL_INTERVAL_MS = 10_000
 
@@ -509,6 +510,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
           onComplete={(method) => {
             setCompletedReceipt({ order: selectedOrder!, method })
             setSelectedOrder(null)
+            ledService.paymentSuccess()
           }}
         />
       )}

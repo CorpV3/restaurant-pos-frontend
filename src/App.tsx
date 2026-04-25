@@ -2,6 +2,7 @@ import { useEffect, Component, type ReactNode } from 'react'
 import { useAuthStore } from './stores/authStore'
 import { useServerSettings } from './stores/serverSettingsStore'
 import { setApiUrl } from './services/api'
+import { ledService } from './services/ledService'
 import POSLayout from './components/layout/POSLayout'
 import LoginPage from './pages/LoginPage'
 import ChefPanel from './pages/ChefPanel'
@@ -60,6 +61,19 @@ function App() {
     // Restore saved server URL so API calls go to the right server on startup
     if (serverUrl) setApiUrl(serverUrl)
     restoreSession()
+
+    // LED: red when offline, off when back online
+    const handleOffline = () => ledService.setError(true)
+    const handleOnline  = () => ledService.setError(false)
+    window.addEventListener('offline', handleOffline)
+    window.addEventListener('online',  handleOnline)
+    // Set initial state
+    if (!navigator.onLine) ledService.setError(true)
+
+    return () => {
+      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('online',  handleOnline)
+    }
   }, [])
 
   if (!isAuthenticated) {

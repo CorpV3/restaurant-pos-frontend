@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '../stores/authStore'
 import { usePrinterStore } from '../stores/printerStore'
 import { thermalPrinter } from '../services/thermalPrinter'
+import { ledService } from '../services/ledService'
 import { appLog } from '../services/appLogger'
 import { api } from '../services/api'
 import StatusBar from '../components/common/StatusBar'
@@ -60,7 +61,7 @@ function formatTime(dateStr: string): string {
 }
 
 export default function ChefPanel({ onLogout }: ChefPanelProps) {
-  const { restaurant } = useAuthStore()
+  const { restaurant, refreshRestaurant } = useAuthStore()
   const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
   const [tab, setTab] = useState<ChefTab>('kitchen')
   const [orders, setOrders] = useState<ChefOrder[]>([])
@@ -165,6 +166,7 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
         const newOrders = mapped.filter((o) => !printedIds.current.has(o.id))
         if (newOrders.length > 0) {
           appLog.info(`autoPrint: poll found ${newOrders.length} new order(s)`)
+          ledService.newOrderAlert()
         }
         for (const order of newOrders) {
           autoPrintOrder(order)
@@ -221,6 +223,12 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
     }
   }, [restaurant?.id])
 
+  // Refresh restaurant settings on mount (picks up auto_print_enabled etc.)
+  useEffect(() => {
+    refreshRestaurant()
+    return () => { ledService.off() }
+  }, [])
+
   useEffect(() => {
     setLoading(true)
     fetchOrders()
@@ -268,6 +276,7 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
   const advanceStatus = async (orderId: string, currentStatus: string) => {
     const nextStatus = NEXT_STATUS[currentStatus]
     if (!nextStatus) return
+    ledService.clearNewOrderAlert()
     setMarkingReady((prev) => new Set(prev).add(orderId))
     try {
       await api.patch(`/api/v1/orders/${orderId}/status`, { status: nextStatus })

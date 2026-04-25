@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
         // Register Capacitor plugins before super.onCreate
         registerPlugin(SerialPrinterPlugin.class);
         registerPlugin(SumUpPlugin.class);
+        registerPlugin(LedPlugin.class);
         super.onCreate(savedInstanceState);
         // Expose CitaqPrinter JS interface directly to the WebView
         getBridge().getWebView().addJavascriptInterface(new PrinterJSInterface(), "CitaqPrinter");

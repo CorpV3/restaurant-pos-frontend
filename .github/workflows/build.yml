@@ -111,6 +111,7 @@ jobs:
           cp android-plugin/SerialPrinterPlugin.java "$PKG/"
           cp android-plugin/PrinterJSInterface.java "$PKG/"
           cp android-plugin/SumUpPlugin.java "$PKG/"
+          cp android-plugin/LedPlugin.java "$PKG/"
           cp android-plugin/MainActivity.java "$PKG/"
 
       - name: Sync Capacitor
