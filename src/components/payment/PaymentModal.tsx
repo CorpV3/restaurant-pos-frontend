@@ -27,9 +27,10 @@ interface PaymentModalProps {
   // Gateway config from restaurant:
   sumupEnabled?: boolean
   triposEnabled?: boolean
+  manualCardEnabled?: boolean
 }
 
-type CardFlow = 'sumup' | 'tripos'
+type CardFlow = 'sumup' | 'tripos' | 'manual'
 
 export default function PaymentModal({
   total,
@@ -46,6 +47,7 @@ export default function PaymentModal({
   existingOrderId,
   sumupEnabled = false,
   triposEnabled = false,
+  manualCardEnabled = false,
 }: PaymentModalProps) {
   const { cashDrawerEnabled, printerType, savedAddress, drawerIp, drawerTcpPort } = usePrinterStore()
 
@@ -70,15 +72,19 @@ export default function PaymentModal({
   const change = cashReceived ? parseFloat(cashReceived) - total : 0
 
   // Determine which card flows are available
-  const bothEnabled = sumupEnabled && triposEnabled
+  const enabledCardFlows = [
+    sumupEnabled && 'sumup',
+    triposEnabled && 'tripos',
+    manualCardEnabled && 'manual',
+  ].filter(Boolean) as CardFlow[]
+  const multipleCardFlows = enabledCardFlows.length > 1
 
   // Auto-select card flow if only one is enabled
   useEffect(() => {
-    if (method === 'card' && !bothEnabled) {
-      if (sumupEnabled) setCardFlow('sumup')
-      else if (triposEnabled) setCardFlow('tripos')
+    if (method === 'card' && !multipleCardFlows) {
+      if (enabledCardFlows.length === 1) setCardFlow(enabledCardFlows[0])
     }
-  }, [method, sumupEnabled, triposEnabled, bothEnabled])
+  }, [method, sumupEnabled, triposEnabled, manualCardEnabled])
 
   // Cleanup poll on unmount
   useEffect(() => {
@@ -347,27 +353,41 @@ export default function PaymentModal({
             </div>
           )}
 
-          {/* Step 2 (Card): pick gateway if both enabled */}
-          {method === 'card' && bothEnabled && !cardFlow && (
+          {/* Step 2 (Card): pick gateway if multiple enabled */}
+          {method === 'card' && multipleCardFlows && !cardFlow && (
             <div className="space-y-3">
               <p className="text-gray-400 text-sm text-center">Choose payment method</p>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setCardFlow('sumup')}
-                  className="flex flex-col items-center gap-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 hover:border-blue-400 rounded-xl p-4 transition-all"
-                >
-                  <span className="text-2xl">📱</span>
-                  <span className="text-white font-medium text-sm">SumUp Link</span>
-                  <span className="text-gray-400 text-xs">QR / online</span>
-                </button>
-                <button
-                  onClick={() => setCardFlow('tripos')}
-                  className="flex flex-col items-center gap-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 hover:border-purple-400 rounded-xl p-4 transition-all"
-                >
-                  <span className="text-2xl">🖥️</span>
-                  <span className="text-white font-medium text-sm">Card Terminal</span>
-                  <span className="text-gray-400 text-xs">chip & tap</span>
-                </button>
+              <div className={`grid gap-3 ${enabledCardFlows.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                {sumupEnabled && (
+                  <button
+                    onClick={() => setCardFlow('sumup')}
+                    className="flex flex-col items-center gap-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 hover:border-blue-400 rounded-xl p-4 transition-all"
+                  >
+                    <span className="text-2xl">📱</span>
+                    <span className="text-white font-medium text-sm">SumUp</span>
+                    <span className="text-gray-400 text-xs">QR / tap</span>
+                  </button>
+                )}
+                {triposEnabled && (
+                  <button
+                    onClick={() => setCardFlow('tripos')}
+                    className="flex flex-col items-center gap-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 hover:border-purple-400 rounded-xl p-4 transition-all"
+                  >
+                    <span className="text-2xl">🖥️</span>
+                    <span className="text-white font-medium text-sm">Terminal</span>
+                    <span className="text-gray-400 text-xs">chip & tap</span>
+                  </button>
+                )}
+                {manualCardEnabled && (
+                  <button
+                    onClick={() => setCardFlow('manual')}
+                    className="flex flex-col items-center gap-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 hover:border-green-400 rounded-xl p-4 transition-all"
+                  >
+                    <span className="text-2xl">💳</span>
+                    <span className="text-white font-medium text-sm">Manual</span>
+                    <span className="text-gray-400 text-xs">enter manually</span>
+                  </button>
+                )}
               </div>
               <button
                 onClick={() => setMethod(null)}
@@ -377,7 +397,7 @@ export default function PaymentModal({
           )}
 
           {/* Step 3a: SumUp QR flow */}
-          {method === 'card' && (cardFlow === 'sumup' || (!bothEnabled && sumupEnabled)) && (
+          {method === 'card' && cardFlow === 'sumup' && (
             <div className="space-y-3">
               {sumupStatus === 'creating' && (
                 <div className="text-center bg-gray-700 rounded-xl p-6">
@@ -468,7 +488,7 @@ export default function PaymentModal({
           )}
 
           {/* Step 3b: triPOS terminal flow */}
-          {method === 'card' && (cardFlow === 'tripos' || (!bothEnabled && triposEnabled)) && (
+          {method === 'card' && cardFlow === 'tripos' && (
             <div className="space-y-3">
               <div className="text-center bg-gray-700 rounded-xl p-5">
                 {terminalStatus === 'waiting' ? (
@@ -521,12 +541,38 @@ export default function PaymentModal({
             </div>
           )}
 
+          {/* Step 3c: Manual card flow */}
+          {method === 'card' && cardFlow === 'manual' && (
+            <div className="space-y-3">
+              <div className="text-center bg-gray-700 rounded-xl p-6 space-y-2">
+                <span className="text-4xl">💳</span>
+                <p className="text-white font-bold text-lg">Manual Card Payment</p>
+                <p className="text-gray-300 text-sm">
+                  Charge <span className="text-orange-400 font-bold">{currencySymbol}{total.toFixed(2)}</span> on your card machine
+                </p>
+                <p className="text-gray-400 text-xs">Once the customer's card is approved, tap Paid below</p>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => { setMethod(null); setCardFlow(null); setProcessing(false) }}
+                  disabled={processing}
+                  className="flex-1 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 disabled:opacity-50"
+                >Back</button>
+                <button
+                  onClick={handlePay}
+                  disabled={processing}
+                  className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 disabled:opacity-50"
+                >{processing ? 'Saving...' : 'Paid ✓'}</button>
+              </div>
+            </div>
+          )}
+
           {/* No gateway configured */}
-          {method === 'card' && !sumupEnabled && !triposEnabled && (
+          {method === 'card' && enabledCardFlows.length === 0 && (
             <div className="space-y-3">
               <div className="text-center bg-gray-700 rounded-xl p-6">
                 <p className="text-yellow-400 font-medium">No card gateway configured</p>
-                <p className="text-gray-400 text-sm mt-1">Enable SumUp or Worldpay in Payment Settings</p>
+                <p className="text-gray-400 text-sm mt-1">Enable SumUp, Worldpay, or Manual Card in Payment Settings</p>
               </div>
               <button
                 onClick={() => setMethod(null)}

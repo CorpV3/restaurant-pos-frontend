@@ -655,6 +655,7 @@ export default function Cart() {
           delivery={orderType === 'delivery' ? deliveryDetails ?? undefined : undefined}
           sumupEnabled={restaurant.sumup_enabled ?? false}
           triposEnabled={restaurant.tripos_enabled ?? false}
+          manualCardEnabled={restaurant.manual_card_enabled ?? false}
           onClose={() => setShowPayment(false)}
           onComplete={(method, orderId, cashReceived) => {
             const tName = orderType === 'delivery'

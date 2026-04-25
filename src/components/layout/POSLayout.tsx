@@ -29,6 +29,7 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
   const [activeCategory, setActiveCategory] = useState('All')
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
   const [pendingCount, setPendingCount] = useState(0)
+  const [newOrderAlert, setNewOrderAlert] = useState(false)
   const { restaurant, refreshRestaurant } = useAuthStore()
   const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
   const printedIds = useRef<Set<string>>(new Set())
@@ -68,6 +69,7 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
         if (newOrders.length > 0) {
           appLog.info(`POSLayout autoprint: ${newOrders.length} new order(s), auto_print_enabled=${restaurant.auto_print_enabled}`)
           ledService.newOrderAlert()
+          setNewOrderAlert(true)
         }
 
         for (const order of newOrders) {
@@ -122,6 +124,22 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
       <UpdateBanner />
       <AnnouncementTicker />
       <StatusBar onLogout={onLogout} />
+
+      {/* New order alert banner */}
+      {newOrderAlert && (
+        <div className="flex-shrink-0 bg-red-600 flex items-center justify-between px-4 py-2 animate-pulse">
+          <span className="text-white font-bold text-sm">New Order Received!</span>
+          <button
+            onClick={() => {
+              ledService.acknowledgeAlert()
+              setNewOrderAlert(false)
+            }}
+            className="px-4 py-1 bg-white text-red-600 font-bold text-sm rounded-lg hover:bg-red-50 animate-none"
+          >
+            Acknowledge
+          </button>
+        </div>
+      )}
 
       {/* Tab bar */}
       <div className="flex-shrink-0 flex bg-gray-800 border-b border-gray-700 px-4 gap-1">

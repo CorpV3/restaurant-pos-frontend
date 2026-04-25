@@ -276,7 +276,6 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
   const advanceStatus = async (orderId: string, currentStatus: string) => {
     const nextStatus = NEXT_STATUS[currentStatus]
     if (!nextStatus) return
-    ledService.clearNewOrderAlert()
     setMarkingReady((prev) => new Set(prev).add(orderId))
     try {
       await api.patch(`/api/v1/orders/${orderId}/status`, { status: nextStatus })

@@ -44,9 +44,10 @@ function clearTimers() {
 }
 
 export const ledService = {
-  /** New order arrived — flash red+blue until acknowledged */
+  /** New order arrived — flash red+blue until acknowledgeAlert() is called */
   async newOrderAlert(): Promise<void> {
     if (currentState === 'error') return // error takes priority
+    if (currentState === 'new_order') return // already flashing, no-op
     clearTimers()
     currentState = 'new_order'
     flashOn = true
@@ -55,16 +56,16 @@ export const ledService = {
       flashOn = !flashOn
       await setLed(flashOn, flashOn)
     }, 400)
-    appLog.info('LED: new order alert (flash red+blue)')
+    appLog.info('LED: new order alert started (flash red+blue — call acknowledgeAlert() to stop)')
   },
 
-  /** Call when chef acknowledges / acts on orders */
-  clearNewOrderAlert(): void {
+  /** Staff tapped Acknowledge — stops the flash */
+  acknowledgeAlert(): void {
     if (currentState !== 'new_order') return
     clearTimers()
     currentState = 'idle'
     setLed(false, false)
-    appLog.info('LED: new order cleared')
+    appLog.info('LED: new order acknowledged')
   },
 
   /** Payment collected — blue for 2s then off */

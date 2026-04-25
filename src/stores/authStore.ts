@@ -25,6 +25,7 @@ interface Restaurant {
   chef_display_enabled?: boolean
   auto_print_enabled?: boolean
   auto_print_copies?: number
+  manual_card_enabled?: boolean
 }
 
 interface AuthStore {

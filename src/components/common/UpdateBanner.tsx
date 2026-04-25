@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { fetchAppVersion, isNewerVersion, type AppVersionInfo } from '../../services/systemService'
 
-const APP_VERSION = '1.0.49' // Keep in sync with package.json
+const APP_VERSION = '1.0.50' // Keep in sync with package.json
 
 function getPlatform(): 'windows' | 'android' | null {
   // Electron (Windows)
