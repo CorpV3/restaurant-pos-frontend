@@ -113,7 +113,7 @@ export default function PrinterSettings() {
         change: 5,
         currencySymbol: '£',
         footer: 'Test print successful!',
-      }, paperWidth, printerType, savedAddress, printDensity)
+      }, paperWidth, printerType, printerType === 'usb' ? usbPrinterName : savedAddress, printDensity)
     } catch (e: any) {
       alert('Print failed: ' + (e?.message ?? e))
     }
@@ -137,7 +137,7 @@ export default function PrinterSettings() {
         <div className="bg-gray-700 rounded-xl p-4 space-y-3">
           <p className="text-gray-300 text-sm font-semibold">Connection Type</p>
           <div className="grid grid-cols-3 gap-2">
-            {(isAndroid ? ['serial', 'bluetooth'] : ['usb', 'bluetooth']).map((t) => (
+            {(isAndroid ? ['serial', 'bluetooth', 'usb'] : ['usb', 'bluetooth']).map((t) => (
               <button
                 key={t}
                 onClick={() => setPrinterType(t as PrinterType)}
@@ -193,6 +193,39 @@ export default function PrinterSettings() {
           {usbPrinterName && (
             <p className="text-green-400 text-xs">✓ Using: {usbPrinterName}</p>
           )}
+        </div>
+      )}
+
+      {/* ── Android USB printer config ── */}
+      {isAndroid && printerType === 'usb' && (
+        <div className="bg-gray-700 rounded-xl p-4 space-y-3">
+          <p className="text-gray-300 text-sm font-semibold">USB Printer (Android)</p>
+          <p className="text-gray-400 text-xs">
+            USB printers appear as <span className="font-mono text-gray-300">/dev/usb/lp0</span> on most Android devices. Change only if your device uses a different path.
+          </p>
+          <div className="flex gap-2">
+            <input
+              value={usbPrinterInput}
+              onChange={(e) => setUsbPrinterInput(e.target.value)}
+              placeholder="/dev/usb/lp0"
+              className="flex-1 bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+            />
+            <button
+              onClick={() => setUsbPrinterName(usbPrinterInput || '/dev/usb/lp0')}
+              className="px-3 py-2 bg-blue-700 hover:bg-blue-600 text-white text-xs rounded-lg"
+            >
+              Apply
+            </button>
+          </div>
+          {usbPrinterName && (
+            <p className="text-green-400 text-xs">✓ Using: {usbPrinterName}</p>
+          )}
+          <button
+            onClick={() => { setUsbPrinterInput('/dev/usb/lp0'); setUsbPrinterName('/dev/usb/lp0') }}
+            className="text-xs text-blue-400 hover:text-blue-300"
+          >
+            Reset to /dev/usb/lp0
+          </button>
         </div>
       )}
 

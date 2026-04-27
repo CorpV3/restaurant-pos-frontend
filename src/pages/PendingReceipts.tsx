@@ -23,7 +23,8 @@ interface CompletedReceipt {
 
 export default function PendingReceipts({ onCountChange }: PendingReceiptsProps) {
   const { restaurant } = useAuthStore()
-  const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
+  const { paperWidth, printerType, savedAddress, usbPrinterName, printDensity } = usePrinterStore()
+  const printAddress = printerType === 'usb' ? usbPrinterName : savedAddress
   const [orders, setOrders] = useState<PendingOrder[]>([])        // served — awaiting payment
   const [activeOrders, setActiveOrders] = useState<PendingOrder[]>([]) // preparing — needs serving
   const [markingServedId, setMarkingServedId] = useState<string | null>(null)
@@ -164,7 +165,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
         order.id.slice(0, 8).toUpperCase(),
         restaurant?.name ?? 'Restaurant',
         32,
-        printerType, savedAddress, printDensity,
+        printerType, printAddress, printDensity,
       )
       toast.success('Labels printed')
     } catch (e: any) {
@@ -194,7 +195,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
         1,
         paperWidth,
         printerType,
-        savedAddress,
+        printAddress,
         printDensity,
       )
       appLog.info('Kitchen ticket printed OK')
@@ -211,7 +212,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
     appLog.info('Cash drawer open request')
     try {
       const { drawerIp, drawerTcpPort } = usePrinterStore.getState()
-      await thermalPrinter.openCashDrawer(printerType, savedAddress, drawerIp, drawerTcpPort)
+      await thermalPrinter.openCashDrawer(printerType, printAddress, drawerIp, drawerTcpPort)
       appLog.info('Cash drawer opened OK')
       toast.success('Cash drawer opened')
     } catch (e: any) {
@@ -232,7 +233,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
         order.id.slice(0, 8).toUpperCase(),
         restaurant?.name ?? 'Restaurant',
         32,
-        printerType, savedAddress, printDensity,
+        printerType, printAddress, printDensity,
       )
       toast.success('Labels printed')
     } catch (e: any) {
@@ -258,7 +259,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
         total: order.total_amount,
         paymentMethod: method,
         currencySymbol,
-      }, paperWidth, printerType, savedAddress, printDensity)
+      }, paperWidth, printerType, printAddress, printDensity)
     } catch (e: any) {
       appLog.error(`Receipts print failed: ${e?.message ?? e}`)
       toast.error(e?.message ?? 'Print failed — check printer connection')

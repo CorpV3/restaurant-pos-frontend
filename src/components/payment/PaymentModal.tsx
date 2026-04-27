@@ -49,11 +49,12 @@ export default function PaymentModal({
   triposEnabled = false,
   manualCardEnabled = false,
 }: PaymentModalProps) {
-  const { cashDrawerEnabled, printerType, savedAddress, drawerIp, drawerTcpPort } = usePrinterStore()
+  const { cashDrawerEnabled, printerType, savedAddress, usbPrinterName, drawerIp, drawerTcpPort } = usePrinterStore()
+  const printAddress = printerType === 'usb' ? usbPrinterName : savedAddress
 
   const kickDrawer = () => {
     if (!cashDrawerEnabled) return
-    thermalPrinter.openCashDrawer(printerType, savedAddress, drawerIp, drawerTcpPort)
+    thermalPrinter.openCashDrawer(printerType, printAddress, drawerIp, drawerTcpPort)
       .then(() => appLog.info('Cash drawer opened after payment'))
       .catch((e) => appLog.warn(`Cash drawer: ${e?.message ?? e}`))
   }

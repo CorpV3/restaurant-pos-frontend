@@ -525,8 +525,8 @@ class ThermalPrinterService {
     appLog.info(`printReceipt: type=${printerType} citaq=${!!citaq} serial=${!!serialPlugin} bt=${!!bt} android=${android} bytes=${bytes.length}`);
 
     // ── 0. CitaqPrinter JS interface — H10-3 direct serial (Android 4.x+) ─────
-    // Works even if Capacitor is not initialized (old Android versions)
-    if (citaq) {
+    // Skip when bluetooth is selected so user's chosen BT printer is used instead
+    if (citaq && printerType !== 'bluetooth') {
       appLog.info('path=CitaqJSInterface → writing to serial port');
       const b64 = btoa(String.fromCharCode(...bytes));
       const ok = citaq.print(b64);
@@ -565,7 +565,20 @@ class ThermalPrinterService {
       return;
     }
 
-    // ── 3. Windows USB via Electron raw printer API ───────────────────────────
+    // ── 3. Android USB via SerialPlugin (e.g. /dev/usb/lp0) ──────────────────
+    if (android && printerType === 'usb') {
+      const usbPlugin = getSerialPlugin();
+      if (usbPlugin) {
+        const usbPath = savedAddress || '/dev/usb/lp0';
+        appLog.info(`path=AndroidUSB → ${usbPath}`);
+        await this.printSerial(bytes, usbPlugin, usbPath);
+        appLog.info('AndroidUSB: print success');
+        return;
+      }
+      throw new Error('USB printing on Android requires the SerialPrinter plugin. Please reinstall the app.');
+    }
+
+    // ── 4. Windows USB via Electron raw printer API ───────────────────────────
     if (!android && printerType === 'usb') {
       const electronAPI = (window as any).electronAPI;
       if (electronAPI?.printRawUSB) {
@@ -577,7 +590,7 @@ class ThermalPrinterService {
       appLog.warn('USB selected but electronAPI.printRawUSB not available — falling back to TCP');
     }
 
-    // ── 4. Windows TCP (network / shared USB printer) ─────────────────────────
+    // ── 5. Windows TCP (network / shared USB printer) ─────────────────────────
     if (!android && savedAddress) {
       const electronAPI = (window as any).electronAPI;
       if (electronAPI?.printRawTCP) {
@@ -590,7 +603,7 @@ class ThermalPrinterService {
       }
     }
 
-    // ── 5. Desktop fallback (Windows / browser) ───────────────────────────────
+    // ── 6. Desktop fallback (Windows / browser) ───────────────────────────────
     // Only use browser print dialog when no printer plugins are available at all
     if (!android) {
       appLog.warn('path=Desktop (browser print dialog) — no printer plugins found');
@@ -606,14 +619,14 @@ class ThermalPrinterService {
     throw new Error('No printer configured. Go to Settings \u2192 Printer to set up your printer.');
   }
 
-  private async printSerial(bytes: Uint8Array, plugin: any): Promise<void> {
-    // Convert bytes to base64 for the Java plugin
+  private async printSerial(bytes: Uint8Array, plugin: any, path?: string): Promise<void> {
+    const devicePath = path ?? this.serialPath;
     const b64 = btoa(String.fromCharCode(...bytes));
     try {
-      await plugin.print({ path: this.serialPath, data: b64 });
+      await plugin.print({ path: devicePath, data: b64 });
     } catch (e: any) {
-      appLog.error(`SerialPlugin write error on ${this.serialPath}: ${e?.message ?? e}`);
-      throw new Error(`Serial print failed on ${this.serialPath}: ${e?.message ?? e}`);
+      appLog.error(`SerialPlugin write error on ${devicePath}: ${e?.message ?? e}`);
+      throw new Error(`Serial print failed on ${devicePath}: ${e?.message ?? e}`);
     }
   }
 
@@ -653,7 +666,7 @@ class ThermalPrinterService {
 
     appLog.info(`printLabel: "${label.itemName}" qty=${label.quantity} type=${printerType}`);
 
-    if (citaq) {
+    if (citaq && printerType !== 'bluetooth') {
       const b64 = btoa(String.fromCharCode(...bytes));
       citaq.print(b64);
       return;
@@ -669,6 +682,14 @@ class ThermalPrinterService {
       if (!this.connectedAddress) throw new Error('No Bluetooth printer connected.');
       await this.printBluetooth(bytes, bt);
       return;
+    }
+    if (android && printerType === 'usb') {
+      const usbPlugin = getSerialPlugin();
+      if (usbPlugin) {
+        await this.printSerial(bytes, usbPlugin, savedAddress || '/dev/usb/lp0');
+        return;
+      }
+      throw new Error('USB printing on Android requires the SerialPrinter plugin.');
     }
     if (!android) {
       // Desktop: just log — labels aren't useful in a browser print dialog
@@ -751,7 +772,7 @@ class ThermalPrinterService {
     const bt = getBtSerial()
     const android = isAndroid()
 
-    if (citaq) {
+    if (citaq && printerType !== 'bluetooth') {
       const b64 = btoa(String.fromCharCode(...bytes))
       citaq.print(b64)
       return
@@ -764,6 +785,13 @@ class ThermalPrinterService {
       if (!this.connectedAddress && savedAddress) await this.connect(savedAddress)
       await this.printBluetooth(bytes, bt)
       return
+    }
+    if (android && printerType === 'usb') {
+      const usbPlugin = getSerialPlugin()
+      if (usbPlugin) {
+        await this.printSerial(bytes, usbPlugin, savedAddress || '/dev/usb/lp0')
+        return
+      }
     }
     if (!android) {
       // Desktop/browser fallback — not applicable for kitchen tickets
@@ -808,7 +836,7 @@ class ThermalPrinterService {
     appLog.info(`openCashDrawer: type=${printerType} citaq=${!!citaq} serial=${!!serialPlugin} bt=${!!bt} android=${android}`);
 
     // ── Android: Citaq H10-3 built-in serial ──────────────────────────────────
-    if (citaq) {
+    if (citaq && printerType !== 'bluetooth') {
       const b64 = btoa(String.fromCharCode(...bytes));
       citaq.print(b64);
       appLog.info('Cash drawer opened via Citaq');

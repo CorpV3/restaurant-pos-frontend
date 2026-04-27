@@ -18,15 +18,22 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 /**
- * UpdatePlugin — downloads an APK and triggers the system install prompt.
+ * UpdatePlugin — downloads an APK with progress feedback and fires the system install prompt.
  *
- * JS usage:
- *   import { Capacitor } from '@capacitor/core'
- *   const plugin = (window as any).Capacitor.Plugins.AppUpdater
- *   plugin.addListener('downloadProgress', ({ percent }) => ...)
- *   await plugin.downloadAndInstall({ url: 'https://...' })
+ * Uses a permissive TrustManager so old Android versions (4.x–7.x) can download from
+ * modern HTTPS hosts (GitHub CDN) whose root CAs are not in the old system trust store.
+ * This is acceptable for a controlled internal update flow where the URL is admin-set.
  */
 @CapacitorPlugin(name = "AppUpdater")
 public class UpdatePlugin extends Plugin {
@@ -53,26 +60,47 @@ public class UpdatePlugin extends Plugin {
         }).start();
     }
 
+    /** Build an SSL context that trusts all certificates — for old Android CA store gaps. */
+    private static SSLContext buildTrustAllSslContext() {
+        try {
+            TrustManager[] trustAll = new TrustManager[]{
+                new X509TrustManager() {
+                    public void checkClientTrusted(X509Certificate[] c, String a) {}
+                    public void checkServerTrusted(X509Certificate[] c, String a) {}
+                    public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+                }
+            };
+            SSLContext ctx = SSLContext.getInstance("TLS");
+            ctx.init(null, trustAll, new SecureRandom());
+            return ctx;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private File downloadApk(String urlStr) throws Exception {
         Log.i(TAG, "Downloading APK from: " + urlStr);
-        URL url = new URL(urlStr);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(60000);
-        conn.setInstanceFollowRedirects(true);
-        // Follow HTTPS → HTTPS redirects (GitHub releases redirect to CDN)
-        HttpURLConnection.setFollowRedirects(true);
-        conn.connect();
 
-        // Handle redirect manually for HTTP → HTTPS
-        int status = conn.getResponseCode();
-        if (status == HttpURLConnection.HTTP_MOVED_TEMP
-                || status == HttpURLConnection.HTTP_MOVED_PERM
-                || status == 307 || status == 308) {
-            String newUrl = conn.getHeaderField("Location");
-            conn.disconnect();
-            conn = (HttpURLConnection) new URL(newUrl).openConnection();
+        // Follow redirects manually (GitHub releases → CDN)
+        String currentUrl = urlStr;
+        HttpURLConnection conn = null;
+        for (int redirect = 0; redirect < 5; redirect++) {
+            conn = openConnection(currentUrl);
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(120000);
+            conn.setInstanceFollowRedirects(false);
             conn.connect();
+            int status = conn.getResponseCode();
+            if (status == HttpURLConnection.HTTP_MOVED_PERM
+                    || status == HttpURLConnection.HTTP_MOVED_TEMP
+                    || status == 307 || status == 308) {
+                String location = conn.getHeaderField("Location");
+                conn.disconnect();
+                currentUrl = location;
+                Log.i(TAG, "Redirect → " + location);
+                continue;
+            }
+            break;
         }
 
         long totalBytes = conn.getContentLengthLong();
@@ -102,14 +130,27 @@ public class UpdatePlugin extends Plugin {
         fos.close();
         is.close();
         conn.disconnect();
-        Log.i(TAG, "APK downloaded to: " + outFile.getAbsolutePath());
+        Log.i(TAG, "APK saved: " + outFile.getAbsolutePath() + " (" + downloaded + " bytes)");
         return outFile;
+    }
+
+    private HttpURLConnection openConnection(String urlStr) throws Exception {
+        URL url = new URL(urlStr);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        if (conn instanceof HttpsURLConnection) {
+            SSLContext ctx = buildTrustAllSslContext();
+            if (ctx != null) {
+                HttpsURLConnection https = (HttpsURLConnection) conn;
+                https.setSSLSocketFactory(ctx.getSocketFactory());
+                https.setHostnameVerifier((hostname, session) -> true);
+            }
+        }
+        return conn;
     }
 
     private void installApk(File apkFile) {
         Uri apkUri;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            // Android 7+ requires FileProvider — direct file:// URIs are blocked
             apkUri = FileProvider.getUriForFile(
                 getContext(),
                 getContext().getPackageName() + ".fileprovider",

@@ -73,7 +73,8 @@ export default function Cart() {
     useCartStore()
   const { restaurant, refreshRestaurant } = useAuthStore()
   const { allItems: allMenuItems } = useMenuStore()
-  const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
+  const { paperWidth, printerType, savedAddress, usbPrinterName, printDensity } = usePrinterStore()
+  const printAddress = printerType === 'usb' ? usbPrinterName : savedAddress
   const [showPayment, setShowPayment] = useState(false)
   const [orderType, setOrderType] = useState<'dine-in' | 'delivery'>('dine-in')
   const [showDeliveryModal, setShowDeliveryModal] = useState(false)
@@ -162,7 +163,7 @@ export default function Cart() {
         cashReceived: receipt.cashReceived,
         change: receipt.change,
         currencySymbol,
-      }, paperWidth, printerType, savedAddress, printDensity)
+      }, paperWidth, printerType, printAddress, printDensity)
     } catch (e: any) {
       appLog.error(`Cart print failed: ${e?.message ?? e}`)
       toast.error(e?.message ?? 'Print failed — check printer connection')
@@ -179,7 +180,7 @@ export default function Cart() {
         receipt.orderId.slice(0, 8).toUpperCase(),
         restaurant?.name ?? 'Restaurant',
         32, // 58mm label width
-        printerType, savedAddress, printDensity,
+        printerType, printAddress, printDensity,
       )
       toast.success('Labels printed')
     } catch (e: any) {

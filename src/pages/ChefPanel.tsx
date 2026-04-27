@@ -62,7 +62,8 @@ function formatTime(dateStr: string): string {
 
 export default function ChefPanel({ onLogout }: ChefPanelProps) {
   const { restaurant, refreshRestaurant } = useAuthStore()
-  const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
+  const { paperWidth, printerType, savedAddress, usbPrinterName, printDensity } = usePrinterStore()
+  const printAddress = printerType === 'usb' ? usbPrinterName : savedAddress
   const [tab, setTab] = useState<ChefTab>('kitchen')
   const [orders, setOrders] = useState<ChefOrder[]>([])
   const [historyOrders, setHistoryOrders] = useState<ChefOrder[]>([])
@@ -115,14 +116,14 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
         restaurant.auto_print_copies ?? 1,
         paperWidth,
         printerType,
-        savedAddress,
+        printAddress,
         printDensity,
       )
       appLog.info(`autoPrint: SUCCESS — kitchen ticket printed for order ${order.order_number}`)
     } catch (e: any) {
       appLog.warn(`autoPrint: FAILED — order=${order.order_number} error=${e?.message ?? e}`)
     }
-  }, [restaurant, paperWidth, printerType, savedAddress, printDensity])
+  }, [restaurant, paperWidth, printerType, printAddress, printDensity])
 
   const fetchOrders = useCallback(async () => {
     if (!restaurant?.id) return

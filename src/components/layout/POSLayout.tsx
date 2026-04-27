@@ -34,7 +34,8 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
   const [newOrderAlert, setNewOrderAlert] = useState(false)
   const [togglingChefDisplay, setTogglingChefDisplay] = useState(false)
   const { restaurant, refreshRestaurant } = useAuthStore()
-  const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
+  const { paperWidth, printerType, savedAddress, usbPrinterName, printDensity } = usePrinterStore()
+  const printAddress = printerType === 'usb' ? usbPrinterName : savedAddress
   const printedIds = useRef<Set<string>>(new Set())
   const isFirstLoad = useRef(true)
 
@@ -131,7 +132,7 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
               restaurant.auto_print_copies ?? 1,
               paperWidth,
               printerType,
-              savedAddress,
+              printAddress,
               printDensity,
             )
             appLog.info(`POSLayout autoprint: SUCCESS ${order.order_number}`)
