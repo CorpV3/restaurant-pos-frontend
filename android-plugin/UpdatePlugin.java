@@ -195,18 +195,13 @@ public class UpdatePlugin extends Plugin {
         long totalBytes = conn.getContentLength(); // getContentLengthLong() is API 24+, use int version for old Android
         flog("INFO", "Content-Length: " + totalBytes + " bytes");
 
-        // API < 24: package installer reads via file:// — must be on external storage (internal is private)
-        // API >= 24: FileProvider handles permissions — external preferred, internal cache as fallback
-        File storageDir = getContext().getExternalFilesDir(null);
-        if (storageDir == null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                storageDir = getContext().getCacheDir(); // covered by <cache-path> in file_paths.xml
-                flog("WARN", "External storage unavailable — using cache dir (API >= 24)");
-            } else {
-                throw new Exception("External storage not available. Cannot install on this device.");
-            }
+        // Always use internal files dir — no permission needed, always writable.
+        // FileProvider grants the package installer read access via content:// URI on all API levels.
+        File outFile = new File(getContext().getFilesDir(), "pos_update.apk");
+        if (outFile.exists()) {
+            outFile.delete();
+            flog("INFO", "Deleted previous APK to free space");
         }
-        File outFile = new File(storageDir, "pos_update.apk");
         flog("INFO", "Saving to: " + outFile.getAbsolutePath());
 
         InputStream is = conn.getInputStream();
@@ -258,19 +253,14 @@ public class UpdatePlugin extends Plugin {
     private void installApk(File apkFile, PluginCall call) {
         flog("INFO", "Preparing install intent — SDK=" + Build.VERSION.SDK_INT);
 
+        // Always use FileProvider — content:// URI grants package installer temporary read
+        // access on all API levels including API 22, without needing external storage.
         Uri apkUri;
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                flog("INFO", "Using FileProvider (API >= 24)");
-                String authority = getContext().getPackageName() + ".fileprovider";
-                flog("INFO", "Authority: " + authority);
-                apkUri = FileProvider.getUriForFile(getContext(), authority, apkFile);
-                flog("INFO", "FileProvider URI: " + apkUri);
-            } else {
-                flog("INFO", "Using Uri.fromFile (API < 24)");
-                apkUri = Uri.fromFile(apkFile);
-                flog("INFO", "File URI: " + apkUri);
-            }
+            String authority = getContext().getPackageName() + ".fileprovider";
+            flog("INFO", "FileProvider authority: " + authority);
+            apkUri = FileProvider.getUriForFile(getContext(), authority, apkFile);
+            flog("INFO", "FileProvider URI: " + apkUri);
         } catch (Exception e) {
             flogE("FileProvider.getUriForFile failed", e);
             call.reject("FileProvider error: " + e.getMessage());
