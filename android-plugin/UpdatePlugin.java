@@ -253,28 +253,41 @@ public class UpdatePlugin extends Plugin {
     private void installApk(File apkFile, PluginCall call) {
         flog("INFO", "Preparing install intent — SDK=" + Build.VERSION.SDK_INT);
 
-        // Always use FileProvider — content:// URI grants package installer temporary read
-        // access on all API levels including API 22, without needing external storage.
         Uri apkUri;
-        try {
-            String authority = getContext().getPackageName() + ".fileprovider";
-            flog("INFO", "FileProvider authority: " + authority);
-            apkUri = FileProvider.getUriForFile(getContext(), authority, apkFile);
-            flog("INFO", "FileProvider URI: " + apkUri);
-        } catch (Exception e) {
-            flogE("FileProvider.getUriForFile failed", e);
-            call.reject("FileProvider error: " + e.getMessage());
-            return;
+        boolean useGrantFlag;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            // API 24+: file:// throws FileUriExposedException — must use FileProvider
+            try {
+                String authority = getContext().getPackageName() + ".fileprovider";
+                flog("INFO", "FileProvider authority: " + authority);
+                apkUri = FileProvider.getUriForFile(getContext(), authority, apkFile);
+                flog("INFO", "FileProvider URI: " + apkUri);
+                useGrantFlag = true;
+            } catch (Exception e) {
+                flogE("FileProvider.getUriForFile failed", e);
+                call.reject("FileProvider error: " + e.getMessage());
+                return;
+            }
+        } else {
+            // API < 24 (e.g. Android 5.1 Citaq): package installer does not support
+            // content:// URIs — use file:// URI directly (no FileUriExposedException on old Android)
+            boolean readable = apkFile.setReadable(true, false);
+            flog("INFO", "file:// URI path; setReadable=" + readable);
+            apkUri = Uri.fromFile(apkFile);
+            flog("INFO", "File URI: " + apkUri);
+            useGrantFlag = false;
         }
 
         final Uri finalUri = apkUri;
+        final boolean grantFlag = useGrantFlag;
         flog("INFO", "Dispatching startActivity on UI thread");
 
         getActivity().runOnUiThread(() -> {
             try {
                 Intent intent = new Intent(Intent.ACTION_VIEW);
                 intent.setDataAndType(finalUri, "application/vnd.android.package-archive");
-                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                if (grantFlag) intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 flog("INFO", "Calling startActivity...");
                 getContext().startActivity(intent);
