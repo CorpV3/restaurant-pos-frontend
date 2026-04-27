@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'path'
 import net from 'net'
 import { exec } from 'child_process'
+import { autoUpdater } from 'electron-updater'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -38,7 +39,46 @@ function createWindow() {
   })
 }
 
-app.whenReady().then(createWindow)
+// ── Auto-updater setup ────────────────────────────────────────────────────────
+autoUpdater.autoDownload = false       // user initiates download
+autoUpdater.autoInstallOnAppQuit = false
+
+autoUpdater.on('update-available', (info) => {
+  mainWindow?.webContents.send('update-available', {
+    version: info.version,
+    releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : '',
+  })
+})
+
+autoUpdater.on('download-progress', (progress) => {
+  mainWindow?.webContents.send('update-progress', Math.round(progress.percent))
+})
+
+autoUpdater.on('update-downloaded', () => {
+  mainWindow?.webContents.send('update-downloaded')
+})
+
+autoUpdater.on('error', (err) => {
+  mainWindow?.webContents.send('update-error', err.message)
+})
+
+app.whenReady().then(() => {
+  createWindow()
+  // Check for updates after window loads (only in packaged app — dev has no update feed)
+  if (app.isPackaged) {
+    setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 5000)
+  }
+})
+
+// ── Auto-updater IPC ──────────────────────────────────────────────────────────
+ipcMain.handle('update-start-download', async () => {
+  if (!app.isPackaged) throw new Error('Auto-update only works in the installed app')
+  await autoUpdater.downloadUpdate()
+})
+
+ipcMain.handle('update-install', () => {
+  autoUpdater.quitAndInstall(false, true) // isSilent=false, isForceRunAfter=true
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
