@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { format } from 'date-fns'
 import { useAuthStore } from '../stores/authStore'
 import { usePrinterStore } from '../stores/printerStore'
@@ -27,6 +27,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
   const [orders, setOrders] = useState<PendingOrder[]>([])        // served — awaiting payment
   const [activeOrders, setActiveOrders] = useState<PendingOrder[]>([]) // preparing — needs serving
   const [markingServedId, setMarkingServedId] = useState<string | null>(null)
+  const markingServedRef = useRef<Set<string>>(new Set()) // synchronous double-tap guard
   const [loading, setLoading] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<PendingOrder | null>(null)
   const [completedReceipt, setCompletedReceipt] = useState<CompletedReceipt | null>(null)
@@ -68,6 +69,8 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
   )
 
   const handleMarkServed = async (order: PendingOrder) => {
+    if (markingServedRef.current.has(order.id)) return
+    markingServedRef.current.add(order.id)
     setMarkingServedId(order.id)
     try {
       await api.patch(`/api/v1/orders/${order.id}/status`, { status: 'served' })
@@ -79,6 +82,7 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
       appLog.error(`Mark served failed: ${msg}`)
       toast.error(msg)
     } finally {
+      markingServedRef.current.delete(order.id)
       setMarkingServedId(null)
     }
   }

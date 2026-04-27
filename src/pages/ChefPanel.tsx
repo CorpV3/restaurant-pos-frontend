@@ -70,6 +70,7 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [markingReady, setMarkingReady] = useState<Set<string>>(new Set())
+  const advancingRef = useRef<Set<string>>(new Set()) // synchronous guard against double-tap
   const [, setTick] = useState(0)
 
   // Track printed order IDs so we don't print the same order twice
@@ -274,8 +275,10 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
   }
 
   const advanceStatus = async (orderId: string, currentStatus: string) => {
+    if (advancingRef.current.has(orderId)) return  // synchronous double-tap guard
     const nextStatus = NEXT_STATUS[currentStatus]
     if (!nextStatus) return
+    advancingRef.current.add(orderId)
     setMarkingReady((prev) => new Set(prev).add(orderId))
     try {
       await api.patch(`/api/v1/orders/${orderId}/status`, { status: nextStatus })
@@ -287,6 +290,7 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
     } catch (e: any) {
       alert('Failed to update: ' + (e?.response?.data?.detail || e?.message || 'Unknown error'))
     } finally {
+      advancingRef.current.delete(orderId)
       setMarkingReady((prev) => {
         const next = new Set(prev)
         next.delete(orderId)
