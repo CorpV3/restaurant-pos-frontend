@@ -60,7 +60,7 @@ public class UpdatePlugin extends Plugin {
         Log.i(TAG, "[" + level + "] " + msg);
     }
 
-    private void flogE(String msg, Throwable t) {
+    private void flogE(String msg, Throwable t) { // Throwable catches both Exception and Error
         String full = msg + " — " + t.getClass().getSimpleName() + ": " + t.getMessage();
         flog("ERROR", full);
         // Also append stack trace to file
@@ -139,9 +139,9 @@ public class UpdatePlugin extends Plugin {
             try {
                 File apkFile = downloadApk(url);
                 installApk(apkFile, call);
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 flogE("Update failed", e);
-                call.reject("Update failed: " + e.getMessage());
+                call.reject("Update failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             }
         }).start();
     }
@@ -192,7 +192,7 @@ public class UpdatePlugin extends Plugin {
 
         if (conn == null) throw new Exception("Failed to open connection");
 
-        long totalBytes = conn.getContentLengthLong();
+        long totalBytes = conn.getContentLength(); // getContentLengthLong() is API 24+ — use int version for old Android
         flog("INFO", "Content-Length: " + totalBytes + " bytes");
 
         // Use internal files dir (always available, no permissions needed)

@@ -34,10 +34,34 @@ export default function LogsPage() {
     const text = entries
       .map((e) => `[${new Date(e.ts).toLocaleTimeString()}] [${e.level.toUpperCase()}] ${e.msg}`)
       .join('\n')
-    navigator.clipboard.writeText(text).then(() => {
+    // navigator.clipboard requires HTTPS — use execCommand fallback for Capacitor WebView
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 2000)
+        }).catch(() => legacyCopy(text))
+      } else {
+        legacyCopy(text)
+      }
+    } catch {
+      legacyCopy(text)
+    }
+  }
+
+  const legacyCopy = (text: string) => {
+    const el = document.createElement('textarea')
+    el.value = text
+    el.style.position = 'fixed'
+    el.style.opacity = '0'
+    document.body.appendChild(el)
+    el.select()
+    try {
+      document.execCommand('copy')
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    })
+    } catch {}
+    document.body.removeChild(el)
   }
 
   const levelColor = (level: LogEntry['level']) => {
