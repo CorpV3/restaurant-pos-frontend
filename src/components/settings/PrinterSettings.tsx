@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Bluetooth, BluetoothOff, Printer, Check, RefreshCw, DollarSign } from 'lucide-react'
 import { thermalPrinter, type BluetoothDevice } from '../../services/thermalPrinter'
 import { usePrinterStore, type PrinterType } from '../../stores/printerStore'
+import { appLog } from '../../services/appLogger'
 import toast from 'react-hot-toast'
 
 export default function PrinterSettings() {
@@ -22,6 +23,8 @@ export default function PrinterSettings() {
   const [usbPrinterInput, setUsbPrinterInput] = useState(usbPrinterName)
   const [availableUsbPrinters, setAvailableUsbPrinters] = useState<string[]>([])
   const [openingDrawer, setOpeningDrawer] = useState(false)
+
+  const [scanningPaths, setScanningPaths] = useState(false)
 
   // Bluetooth state
   const [btSupported, setBtSupported] = useState(false)
@@ -58,6 +61,15 @@ export default function PrinterSettings() {
   const applySerialPath = () => {
     setSerialPath(serialPathInput)
     thermalPrinter.serialPath = serialPathInput
+  }
+
+  const scanPaths = async () => {
+    setScanningPaths(true)
+    const paths = await thermalPrinter.listSerialPaths()
+    setDetectedPaths(paths)
+    appLog.info(`[USB Scan] Found ${paths.length} path(s): ${paths.join(', ') || '(none)'}`)
+    if (paths.length === 0) appLog.warn('[USB Scan] No serial/USB paths found — check device connection')
+    setScanningPaths(false)
   }
 
   const applyDrawerIp = () => {
@@ -199,10 +211,45 @@ export default function PrinterSettings() {
       {/* ── Android USB printer config ── */}
       {isAndroid && printerType === 'usb' && (
         <div className="bg-gray-700 rounded-xl p-4 space-y-3">
-          <p className="text-gray-300 text-sm font-semibold">USB Printer (Android)</p>
-          <p className="text-gray-400 text-xs">
-            USB printers appear as <span className="font-mono text-gray-300">/dev/usb/lp0</span> on most Android devices. Change only if your device uses a different path.
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-gray-300 text-sm font-semibold">USB Printer (Android)</p>
+            <button
+              onClick={scanPaths}
+              disabled={scanningPaths}
+              className="flex items-center gap-1 px-3 py-1.5 bg-purple-700 hover:bg-purple-600 text-white text-xs rounded-lg disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={scanningPaths ? 'animate-spin' : ''} />
+              {scanningPaths ? 'Scanning...' : 'Scan Paths'}
+            </button>
+          </div>
+
+          {detectedPaths.length > 0 && (
+            <div>
+              <p className="text-gray-400 text-xs mb-1">Detected device paths — tap to use:</p>
+              <div className="flex flex-wrap gap-1">
+                {detectedPaths.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => { setUsbPrinterInput(p); setUsbPrinterName(p) }}
+                    className={`text-xs px-2 py-1 rounded-lg font-mono ${
+                      usbPrinterName === p
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {detectedPaths.length === 0 && (
+            <p className="text-yellow-400 text-xs">
+              Tap "Scan Paths" to detect available USB/serial device paths. Results will also appear in the Logs tab.
+            </p>
+          )}
+
           <div className="flex gap-2">
             <input
               value={usbPrinterInput}

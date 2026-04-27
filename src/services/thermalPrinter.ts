@@ -568,6 +568,7 @@ class ThermalPrinterService {
     // ── 3. Android USB via SerialPlugin (e.g. /dev/usb/lp0) ──────────────────
     if (android && printerType === 'usb') {
       const usbPlugin = getSerialPlugin();
+      appLog.info(`AndroidUSB: plugin=${!!usbPlugin} savedAddress="${savedAddress}"`);
       if (usbPlugin) {
         const usbPath = savedAddress || '/dev/usb/lp0';
         appLog.info(`path=AndroidUSB → ${usbPath}`);
