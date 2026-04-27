@@ -112,10 +112,35 @@ jobs:
           cp android-plugin/PrinterJSInterface.java "$PKG/"
           cp android-plugin/SumUpPlugin.java "$PKG/"
           cp android-plugin/LedPlugin.java "$PKG/"
+          cp android-plugin/UpdatePlugin.java "$PKG/"
           cp android-plugin/MainActivity.java "$PKG/"
 
       - name: Sync Capacitor
         run: npx cap sync android
+
+      - name: Patch Android — install permission + FileProvider
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          XML_DIR="android/app/src/main/res/xml"
+
+          # Add REQUEST_INSTALL_PACKAGES permission (before <application> tag)
+          if ! grep -q "REQUEST_INSTALL_PACKAGES" "$MANIFEST"; then
+            sed -i 's|<application|<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <application|' "$MANIFEST"
+          fi
+
+          # Add FileProvider inside <application> (before closing </application>)
+          if ! grep -q "fileprovider" "$MANIFEST"; then
+            sed -i 's|</application>|    <provider\n            android:name="androidx.core.content.FileProvider"\n            android:authorities="${applicationId}.fileprovider"\n            android:exported="false"\n            android:grantUriPermissions="true">\n            <meta-data\n                android:name="android.support.FILE_PROVIDER_PATHS"\n                android:resource="@xml/file_paths" />\n        </provider>\n    </application>|' "$MANIFEST"
+          fi
+
+          # Create res/xml/file_paths.xml for FileProvider
+          mkdir -p "$XML_DIR"
+          cat > "$XML_DIR/file_paths.xml" << 'XML_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <paths>
+              <external-files-path name="apk" path="." />
+          </paths>
+          XML_EOF
 
       - name: Build debug APK
         run: |

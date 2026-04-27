@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SerialPrinterPlugin.class);
         registerPlugin(SumUpPlugin.class);
         registerPlugin(LedPlugin.class);
+        registerPlugin(UpdatePlugin.class);
         super.onCreate(savedInstanceState);
         // Expose CitaqPrinter JS interface directly to the WebView
         getBridge().getWebView().addJavascriptInterface(new PrinterJSInterface(), "CitaqPrinter");

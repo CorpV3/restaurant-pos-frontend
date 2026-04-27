@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { fetchAppVersion, isNewerVersion, type AppVersionInfo } from '../../services/systemService'
+import { downloadAndInstallAndroid, isAndroidUpdateSupported } from '../../services/appUpdater'
 
 const APP_VERSION = '1.0.50' // Keep in sync with package.json
 
@@ -59,6 +60,7 @@ export default function UpdateBanner() {
 
   const handleDownload = async () => {
     const platform = getPlatform()
+
     if (platform === 'windows') {
       const api = (window as any).electronAPI
       if (api?.updateStartDownload) {
@@ -66,15 +68,32 @@ export default function UpdateBanner() {
         setDownloadProgress(0)
         try {
           await api.updateStartDownload()
-        } catch (e: any) {
-          // Packaged-app guard failed — fall back to browser download
+        } catch {
+          // Packaged-app guard failed (dev mode) — fall back to browser
           window.open(updateInfo?.download_url || '', '_blank')
           setDismissed(true)
         }
         return
       }
     }
-    // Android: open APK URL — triggers system download + install prompt
+
+    if (platform === 'android' && isAndroidUpdateSupported() && updateInfo?.download_url) {
+      setUpdateState('downloading')
+      setDownloadProgress(0)
+      try {
+        await downloadAndInstallAndroid(updateInfo.download_url, (pct) => {
+          setDownloadProgress(pct)
+        })
+        // Install intent fired — Android shows system prompt, banner can go idle
+        setUpdateState('ready')
+      } catch (e: any) {
+        setErrorMsg(e?.message ?? 'Download failed')
+        setUpdateState('error')
+      }
+      return
+    }
+
+    // Fallback: open APK URL in system browser
     if (updateInfo?.download_url) {
       window.open(updateInfo.download_url, '_system')
     }
@@ -110,7 +129,9 @@ export default function UpdateBanner() {
             </>
           ) : updateState === 'ready' ? (
             <p className="text-amber-900 font-semibold text-sm">
-              v{updateInfo.version_string} downloaded — ready to install
+              {getPlatform() === 'android'
+                ? 'Install prompt opened — follow the on-screen steps'
+                : `v${updateInfo.version_string} downloaded — ready to install`}
             </p>
           ) : updateState === 'error' ? (
             <p className="text-white font-semibold text-sm truncate">
@@ -138,7 +159,7 @@ export default function UpdateBanner() {
             Download & Update
           </button>
         )}
-        {updateState === 'ready' && (
+        {updateState === 'ready' && getPlatform() === 'windows' && (
           <button
             onClick={handleInstall}
             className="px-4 py-1.5 bg-green-700 hover:bg-green-800 text-white text-sm font-bold rounded-lg animate-pulse"
