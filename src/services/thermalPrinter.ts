@@ -526,7 +526,7 @@ class ThermalPrinterService {
 
     // ── 0. CitaqPrinter JS interface — H10-3 direct serial (Android 4.x+) ─────
     // Skip when bluetooth is selected so user's chosen BT printer is used instead
-    if (citaq && printerType !== 'bluetooth') {
+    if (citaq && printerType === 'serial') {
       appLog.info('path=CitaqJSInterface → writing to serial port');
       const b64 = btoa(String.fromCharCode(...bytes));
       const ok = citaq.print(b64);
@@ -666,7 +666,7 @@ class ThermalPrinterService {
 
     appLog.info(`printLabel: "${label.itemName}" qty=${label.quantity} type=${printerType}`);
 
-    if (citaq && printerType !== 'bluetooth') {
+    if (citaq && printerType === 'serial') {
       const b64 = btoa(String.fromCharCode(...bytes));
       citaq.print(b64);
       return;
@@ -772,7 +772,7 @@ class ThermalPrinterService {
     const bt = getBtSerial()
     const android = isAndroid()
 
-    if (citaq && printerType !== 'bluetooth') {
+    if (citaq && printerType === 'serial') {
       const b64 = btoa(String.fromCharCode(...bytes))
       citaq.print(b64)
       return
@@ -836,7 +836,7 @@ class ThermalPrinterService {
     appLog.info(`openCashDrawer: type=${printerType} citaq=${!!citaq} serial=${!!serialPlugin} bt=${!!bt} android=${android}`);
 
     // ── Android: Citaq H10-3 built-in serial ──────────────────────────────────
-    if (citaq && printerType !== 'bluetooth') {
+    if (citaq && printerType === 'serial') {
       const b64 = btoa(String.fromCharCode(...bytes));
       citaq.print(b64);
       appLog.info('Cash drawer opened via Citaq');

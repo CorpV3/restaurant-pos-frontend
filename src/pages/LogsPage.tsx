@@ -1,14 +1,34 @@
 import { useState, useEffect } from 'react'
 import { appLog, type LogEntry } from '../services/appLogger'
+import { isAndroidUpdateSupported, readAndroidUpdateLog, clearAndroidUpdateLog } from '../services/appUpdater'
 
 export default function LogsPage() {
   const [entries, setEntries] = useState<LogEntry[]>(appLog.getEntries())
   const [copied, setCopied] = useState(false)
+  const [loadingCrashLog, setLoadingCrashLog] = useState(false)
+  const isAndroid = isAndroidUpdateSupported()
 
   useEffect(() => {
     const unsub = appLog.subscribe(() => setEntries(appLog.getEntries()))
     return () => { unsub() }
   }, [])
+
+  const loadCrashLog = async () => {
+    setLoadingCrashLog(true)
+    const log = await readAndroidUpdateLog()
+    appLog.info('── Android Update Log ──')
+    log.split('\n').filter(Boolean).forEach((line) => {
+      if (line.includes('[ERROR]')) appLog.error(line)
+      else if (line.includes('[WARN]')) appLog.warn(line)
+      else appLog.info(line)
+    })
+    setLoadingCrashLog(false)
+  }
+
+  const clearCrashLog = async () => {
+    await clearAndroidUpdateLog()
+    appLog.info('Android update log cleared')
+  }
 
   const copyAll = () => {
     const text = entries
@@ -51,6 +71,24 @@ export default function LogsPage() {
         >
           {copied ? 'Copied!' : 'Copy All'}
         </button>
+        {isAndroid && (
+          <button
+            onClick={loadCrashLog}
+            disabled={loadingCrashLog}
+            className="px-3 py-1.5 bg-orange-700 hover:bg-orange-600 text-white text-xs rounded-lg disabled:opacity-40"
+          >
+            {loadingCrashLog ? 'Loading...' : '📋 Update Log'}
+          </button>
+        )}
+        {isAndroid && (
+          <button
+            onClick={clearCrashLog}
+            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded-lg"
+            title="Clear Android update log file"
+          >
+            Clear File
+          </button>
+        )}
         <button
           onClick={() => { appLog.clear(); setEntries([]) }}
           disabled={entries.length === 0}

@@ -13,13 +13,20 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -29,6 +36,84 @@ import javax.net.ssl.X509TrustManager;
 @CapacitorPlugin(name = "AppUpdater")
 public class UpdatePlugin extends Plugin {
     private static final String TAG = "UpdatePlugin";
+    private static final String LOG_FILE = "update_log.txt";
+
+    // ── File-based logger (survives app crashes) ──────────────────────────────
+
+    private void flog(String level, String msg) {
+        // 1. Write to file (persists through crash)
+        try {
+            File logFile = new File(getContext().getFilesDir(), LOG_FILE);
+            String ts = new SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(new Date());
+            String line = "[" + ts + "] [" + level + "] " + msg + "\n";
+            try (FileWriter fw = new FileWriter(logFile, true)) {
+                fw.write(line);
+            }
+        } catch (Exception ignored) {}
+        // 2. Fire event to JS Logs tab (real-time, visible without crash)
+        try {
+            JSObject ev = new JSObject();
+            ev.put("level", level);
+            ev.put("msg", msg);
+            notifyListeners("updateLog", ev);
+        } catch (Exception ignored) {}
+        Log.i(TAG, "[" + level + "] " + msg);
+    }
+
+    private void flogE(String msg, Throwable t) {
+        String full = msg + " — " + t.getClass().getSimpleName() + ": " + t.getMessage();
+        flog("ERROR", full);
+        // Also append stack trace to file
+        try {
+            File logFile = new File(getContext().getFilesDir(), LOG_FILE);
+            try (FileWriter fw = new FileWriter(logFile, true);
+                 PrintWriter pw = new PrintWriter(fw)) {
+                t.printStackTrace(pw);
+            }
+        } catch (Exception ignored) {}
+        Log.e(TAG, msg, t);
+    }
+
+    /** Read the persistent update log and return it to JS. */
+    @PluginMethod
+    public void readUpdateLog(PluginCall call) {
+        try {
+            File logFile = new File(getContext().getFilesDir(), LOG_FILE);
+            if (!logFile.exists()) {
+                JSObject ret = new JSObject();
+                ret.put("log", "(no update log found)");
+                call.resolve(ret);
+                return;
+            }
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(
+                    new java.io.FileInputStream(logFile)))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    sb.append(line).append("\n");
+                }
+            }
+            JSObject ret = new JSObject();
+            ret.put("log", sb.toString());
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Could not read log: " + e.getMessage());
+        }
+    }
+
+    /** Clear the persistent update log. */
+    @PluginMethod
+    public void clearUpdateLog(PluginCall call) {
+        try {
+            File logFile = new File(getContext().getFilesDir(), LOG_FILE);
+            if (logFile.exists()) logFile.delete();
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Could not clear log: " + e.getMessage());
+        }
+    }
+
+    // ── Main download-and-install flow ────────────────────────────────────────
 
     @PluginMethod
     public void downloadAndInstall(PluginCall call) {
@@ -39,12 +124,23 @@ public class UpdatePlugin extends Plugin {
         }
         call.setKeepAlive(true);
 
+        // Clear previous log at the start of each attempt
+        try {
+            File logFile = new File(getContext().getFilesDir(), LOG_FILE);
+            if (logFile.exists()) logFile.delete();
+        } catch (Exception ignored) {}
+
+        flog("INFO", "=== Update started ===");
+        flog("INFO", "URL: " + url);
+        flog("INFO", "Android SDK: " + Build.VERSION.SDK_INT + " (" + Build.VERSION.RELEASE + ")");
+        flog("INFO", "Device: " + Build.MANUFACTURER + " " + Build.MODEL);
+
         new Thread(() -> {
             try {
                 File apkFile = downloadApk(url);
                 installApk(apkFile, call);
             } catch (Exception e) {
-                Log.e(TAG, "Update failed: " + e.getMessage(), e);
+                flogE("Update failed", e);
                 call.reject("Update failed: " + e.getMessage());
             }
         }).start();
@@ -63,23 +159,24 @@ public class UpdatePlugin extends Plugin {
             ctx.init(null, trustAll, new SecureRandom());
             return ctx;
         } catch (Exception e) {
-            Log.w(TAG, "buildTrustAllSslContext failed: " + e.getMessage());
             return null;
         }
     }
 
     private File downloadApk(String urlStr) throws Exception {
-        Log.i(TAG, "Downloading APK from: " + urlStr);
+        flog("INFO", "Starting download: " + urlStr);
 
         String currentUrl = urlStr;
         HttpURLConnection conn = null;
         for (int redirect = 0; redirect < 5; redirect++) {
+            flog("INFO", "Connecting to: " + currentUrl);
             conn = openConnection(currentUrl);
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(120000);
             conn.setInstanceFollowRedirects(false);
             conn.connect();
             int status = conn.getResponseCode();
+            flog("INFO", "HTTP status: " + status);
             if (status == HttpURLConnection.HTTP_MOVED_PERM
                     || status == HttpURLConnection.HTTP_MOVED_TEMP
                     || status == 307 || status == 308) {
@@ -87,7 +184,7 @@ public class UpdatePlugin extends Plugin {
                 conn.disconnect();
                 if (location == null) break;
                 currentUrl = location;
-                Log.i(TAG, "Redirect → " + location);
+                flog("INFO", "Redirect → " + location);
                 continue;
             }
             break;
@@ -96,11 +193,12 @@ public class UpdatePlugin extends Plugin {
         if (conn == null) throw new Exception("Failed to open connection");
 
         long totalBytes = conn.getContentLengthLong();
+        flog("INFO", "Content-Length: " + totalBytes + " bytes");
 
-        // Use external files dir if available, otherwise cache dir
-        File storageDir = getContext().getExternalFilesDir(null);
-        if (storageDir == null) storageDir = getContext().getCacheDir();
+        // Use internal files dir (always available, no permissions needed)
+        File storageDir = getContext().getFilesDir();
         File outFile = new File(storageDir, "pos_update.apk");
+        flog("INFO", "Saving to: " + outFile.getAbsolutePath());
 
         InputStream is = conn.getInputStream();
         FileOutputStream fos = new FileOutputStream(outFile);
@@ -130,7 +228,7 @@ public class UpdatePlugin extends Plugin {
             conn.disconnect();
         }
 
-        Log.i(TAG, "APK saved: " + outFile.getAbsolutePath());
+        flog("INFO", "Download complete: " + outFile.length() + " bytes");
         return outFile;
     }
 
@@ -149,36 +247,42 @@ public class UpdatePlugin extends Plugin {
     }
 
     private void installApk(File apkFile, PluginCall call) {
+        flog("INFO", "Preparing install intent — SDK=" + Build.VERSION.SDK_INT);
+
         Uri apkUri;
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                apkUri = FileProvider.getUriForFile(
-                    getContext(),
-                    getContext().getPackageName() + ".fileprovider",
-                    apkFile
-                );
+                flog("INFO", "Using FileProvider (API >= 24)");
+                String authority = getContext().getPackageName() + ".fileprovider";
+                flog("INFO", "Authority: " + authority);
+                apkUri = FileProvider.getUriForFile(getContext(), authority, apkFile);
+                flog("INFO", "FileProvider URI: " + apkUri);
             } else {
+                flog("INFO", "Using Uri.fromFile (API < 24)");
                 apkUri = Uri.fromFile(apkFile);
+                flog("INFO", "File URI: " + apkUri);
             }
         } catch (Exception e) {
-            Log.e(TAG, "FileProvider error: " + e.getMessage(), e);
-            call.reject("FileProvider not configured — reinstall the app: " + e.getMessage());
+            flogE("FileProvider.getUriForFile failed", e);
+            call.reject("FileProvider error: " + e.getMessage());
             return;
         }
 
         final Uri finalUri = apkUri;
-        // Must start install intent on the UI thread
+        flog("INFO", "Dispatching startActivity on UI thread");
+
         getActivity().runOnUiThread(() -> {
             try {
                 Intent intent = new Intent(Intent.ACTION_INSTALL_PACKAGE);
                 intent.setDataAndType(finalUri, "application/vnd.android.package-archive");
                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                flog("INFO", "Calling startActivity...");
                 getContext().startActivity(intent);
-                Log.i(TAG, "Install intent fired");
+                flog("INFO", "=== Install intent fired successfully ===");
                 call.resolve();
             } catch (Exception e) {
-                Log.e(TAG, "startActivity failed: " + e.getMessage(), e);
+                flogE("startActivity failed", e);
                 call.reject("Could not open installer: " + e.getMessage());
             }
         });
