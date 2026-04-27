@@ -8,9 +8,9 @@ export default function PrinterSettings() {
   const {
     printerType, serialPath, savedAddress, savedName,
     autoPrint, paperWidth, printDensity, printCopies,
-    cashDrawerEnabled, drawerIp, drawerTcpPort,
+    cashDrawerEnabled, drawerIp, drawerTcpPort, usbPrinterName,
     setPrinterType, setSerialPath, setSavedPrinter, setAutoPrint, setPaperWidth, setPrintDensity,
-    setPrintCopies, setCashDrawerEnabled, setDrawerIp, setDrawerTcpPort,
+    setPrintCopies, setCashDrawerEnabled, setDrawerIp, setDrawerTcpPort, setUsbPrinterName,
   } = usePrinterStore()
 
   const [isAndroid, setIsAndroid] = useState(false)
@@ -19,6 +19,8 @@ export default function PrinterSettings() {
   const [detectedPaths, setDetectedPaths] = useState<string[]>([])
   const [serialPathInput, setSerialPathInput] = useState(serialPath)
   const [drawerIpInput, setDrawerIpInput] = useState(drawerIp)
+  const [usbPrinterInput, setUsbPrinterInput] = useState(usbPrinterName)
+  const [availableUsbPrinters, setAvailableUsbPrinters] = useState<string[]>([])
   const [openingDrawer, setOpeningDrawer] = useState(false)
 
   // Bluetooth state
@@ -33,7 +35,11 @@ export default function PrinterSettings() {
       typeof (window as any).Capacitor !== 'undefined' &&
       (window as any).Capacitor.getPlatform() === 'android'
     setIsAndroid(platform)
-    setIsWindows(!!(window as any).electronAPI)
+    const isWin = !!(window as any).electronAPI
+    setIsWindows(isWin)
+    if (isWin && (window as any).electronAPI?.listPrinters) {
+      (window as any).electronAPI.listPrinters().then((list: string[]) => setAvailableUsbPrinters(list || []))
+    }
 
     const hasPlugin = thermalPrinter.hasSerialPlugin()
     setHasSerialPlugin(hasPlugin)
@@ -126,25 +132,67 @@ export default function PrinterSettings() {
         </div>
       )}
 
-      {/* ── Printer type selector (Android only) ── */}
-      {isAndroid && (
+      {/* ── Printer type selector ── */}
+      {(isAndroid || isWindows) && (
         <div className="bg-gray-700 rounded-xl p-4 space-y-3">
           <p className="text-gray-300 text-sm font-semibold">Connection Type</p>
-          <div className="grid grid-cols-2 gap-2">
-            {(['serial', 'bluetooth'] as PrinterType[]).map((t) => (
+          <div className="grid grid-cols-3 gap-2">
+            {(isAndroid ? ['serial', 'bluetooth'] : ['usb', 'bluetooth']).map((t) => (
               <button
                 key={t}
-                onClick={() => setPrinterType(t)}
+                onClick={() => setPrinterType(t as PrinterType)}
                 className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${
                   printerType === t
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
                 }`}
               >
-                {t === 'serial' ? '🔌 Serial (Built-in)' : '📶 Bluetooth'}
+                {t === 'serial' ? '🔌 Built-in' : t === 'usb' ? '🖨 USB' : '📶 Bluetooth'}
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── Windows USB printer config ── */}
+      {isWindows && printerType === 'usb' && (
+        <div className="bg-gray-700 rounded-xl p-4 space-y-3">
+          <p className="text-gray-300 text-sm font-semibold">USB / Windows Printer</p>
+          <p className="text-gray-400 text-xs">Enter the exact name as shown in Windows Printers & Scanners.</p>
+          {availableUsbPrinters.length > 0 && (
+            <div className="space-y-1">
+              {availableUsbPrinters.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => { setUsbPrinterInput(name); setUsbPrinterName(name) }}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                    usbPrinterName === name
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                >
+                  {usbPrinterName === name ? '✓ ' : ''}{name}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              value={usbPrinterInput}
+              onChange={(e) => setUsbPrinterInput(e.target.value)}
+              placeholder="e.g. EPSON TM-T88VI"
+              className="flex-1 bg-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => setUsbPrinterName(usbPrinterInput)}
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg font-medium"
+            >
+              Save
+            </button>
+          </div>
+          {usbPrinterName && (
+            <p className="text-green-400 text-xs">✓ Using: {usbPrinterName}</p>
+          )}
         </div>
       )}
 

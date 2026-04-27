@@ -506,7 +506,7 @@ class ThermalPrinterService {
   async printReceipt(
     data: ReceiptData,
     paperWidth = 48,
-    printerType: 'serial' | 'bluetooth' = 'serial',
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
     savedAddress: string | null = null,
     printDensity = 3,
   ): Promise<void> {
@@ -565,7 +565,32 @@ class ThermalPrinterService {
       return;
     }
 
-    // ── 3. Desktop fallback (Windows / browser) ───────────────────────────────
+    // ── 3. Windows USB via Electron raw printer API ───────────────────────────
+    if (!android && printerType === 'usb') {
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.printRawUSB) {
+        appLog.info(`path=ElectronUSB → ${savedAddress}`);
+        await electronAPI.printRawUSB({ printerName: savedAddress, data: Array.from(bytes) });
+        appLog.info('USB print success');
+        return;
+      }
+      appLog.warn('USB selected but electronAPI.printRawUSB not available — falling back to TCP');
+    }
+
+    // ── 4. Windows TCP (network / shared USB printer) ─────────────────────────
+    if (!android && savedAddress) {
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.printRawTCP) {
+        const [host, portStr] = (savedAddress || '').split(':');
+        const port = parseInt(portStr || '9100', 10);
+        appLog.info(`path=ElectronTCP → ${host}:${port}`);
+        await electronAPI.printRawTCP({ host, port, data: Array.from(bytes) });
+        appLog.info('TCP print success');
+        return;
+      }
+    }
+
+    // ── 5. Desktop fallback (Windows / browser) ───────────────────────────────
     // Only use browser print dialog when no printer plugins are available at all
     if (!android) {
       appLog.warn('path=Desktop (browser print dialog) — no printer plugins found');
@@ -611,7 +636,7 @@ class ThermalPrinterService {
   async printLabel(
     label: LabelData,
     paperWidth = 32,
-    printerType: 'serial' | 'bluetooth' = 'serial',
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
     savedAddress: string | null = null,
     printDensity = 3,
   ): Promise<void> {
@@ -663,7 +688,7 @@ class ThermalPrinterService {
     orderRef: string,
     restaurantName: string,
     paperWidth = 32,
-    printerType: 'serial' | 'bluetooth' = 'serial',
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
     savedAddress: string | null = null,
     printDensity = 3,
   ): Promise<void> {
@@ -680,7 +705,7 @@ class ThermalPrinterService {
     label: PrepLabelData,
     copies = 1,
     paperWidth = 32,
-    printerType: 'serial' | 'bluetooth' = 'serial',
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
     savedAddress: string | null = null,
     printDensity = 3,
   ): Promise<void> {
@@ -718,7 +743,7 @@ class ThermalPrinterService {
 
   async printRawBytes(
     bytes: Uint8Array,
-    printerType: 'serial' | 'bluetooth' = 'serial',
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
     savedAddress: string | null = null,
   ): Promise<void> {
     const citaq = getCitaqPrinter()
@@ -750,7 +775,7 @@ class ThermalPrinterService {
     data: KitchenTicketData,
     copies = 1,
     paperWidth = 48,
-    printerType: 'serial' | 'bluetooth' = 'serial',
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
     savedAddress: string | null = null,
     printDensity = 3,
   ): Promise<void> {
@@ -769,7 +794,7 @@ class ThermalPrinterService {
    *   Requires drawerIp to be configured in printer settings.
    */
   async openCashDrawer(
-    printerType: 'serial' | 'bluetooth' = 'serial',
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
     savedAddress: string | null = null,
     drawerIp = '',
     drawerTcpPort = 9100,

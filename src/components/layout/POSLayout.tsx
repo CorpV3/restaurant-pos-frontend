@@ -9,12 +9,14 @@ import ReportsPage from '../../pages/ReportsPage'
 import PendingReceipts from '../../pages/PendingReceipts'
 import LogsPage from '../../pages/LogsPage'
 import InventoryPage from '../../pages/InventoryPage'
+import PrinterSettings from '../settings/PrinterSettings'
 import { useAuthStore } from '../../stores/authStore'
 import { usePrinterStore } from '../../stores/printerStore'
 import { thermalPrinter } from '../../services/thermalPrinter'
 import { ledService } from '../../services/ledService'
 import { appLog } from '../../services/appLogger'
 import { api } from '../../services/api'
+import toast from 'react-hot-toast'
 
 interface POSLayoutProps {
   onLogout: () => void
@@ -22,7 +24,7 @@ interface POSLayoutProps {
 
 const DEFAULT_CATEGORIES = ['All', 'Starters', 'Mains', 'Sides', 'Drinks', 'Desserts']
 
-type Tab = 'pos' | 'receipts' | 'inventory' | 'reports' | 'logs'
+type Tab = 'pos' | 'receipts' | 'inventory' | 'reports' | 'logs' | 'settings'
 
 export default function POSLayout({ onLogout }: POSLayoutProps) {
   const [activeTab, setActiveTab] = useState<Tab>('pos')
@@ -30,6 +32,7 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
   const [pendingCount, setPendingCount] = useState(0)
   const [newOrderAlert, setNewOrderAlert] = useState(false)
+  const [togglingChefDisplay, setTogglingChefDisplay] = useState(false)
   const { restaurant, refreshRestaurant } = useAuthStore()
   const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
   const printedIds = useRef<Set<string>>(new Set())
@@ -38,6 +41,33 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
   const handleCategoriesLoaded = useCallback((cats: string[]) => {
     setCategories(cats)
   }, [])
+
+  const handleToggleChefDisplay = async () => {
+    if (!restaurant?.id) return
+    setTogglingChefDisplay(true)
+    try {
+      const newVal = !restaurant.chef_display_enabled
+      await api.patch(`/api/v1/restaurants/${restaurant.id}`, { chef_display_enabled: newVal })
+      await refreshRestaurant()
+      toast.success(newVal ? 'Chef display enabled' : 'Chef display disabled')
+    } catch {
+      toast.error('Failed to update chef display setting')
+    } finally {
+      setTogglingChefDisplay(false)
+    }
+  }
+
+  const handleToggleAutoPrint = async () => {
+    if (!restaurant?.id) return
+    try {
+      const newVal = !restaurant.auto_print_enabled
+      await api.patch(`/api/v1/restaurants/${restaurant.id}`, { auto_print_enabled: newVal })
+      await refreshRestaurant()
+      toast.success(newVal ? 'Auto-print enabled' : 'Auto-print disabled')
+    } catch {
+      toast.error('Failed to update auto-print setting')
+    }
+  }
 
   // Refresh restaurant settings on mount (picks up auto_print_enabled)
   useEffect(() => {
@@ -198,6 +228,16 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
         >
           Logs
         </button>
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'settings'
+              ? 'border-orange-500 text-orange-400'
+              : 'border-transparent text-gray-400 hover:text-white'
+          }`}
+        >
+          Settings
+        </button>
       </div>
 
       {activeTab === 'pos' ? (
@@ -221,8 +261,71 @@ export default function POSLayout({ onLogout }: POSLayoutProps) {
         <InventoryPage />
       ) : activeTab === 'reports' ? (
         <ReportsPage />
-      ) : (
+      ) : activeTab === 'logs' ? (
         <LogsPage />
+      ) : (
+        /* Settings tab */
+        <div className="flex-1 overflow-y-auto bg-gray-900 p-4">
+          <div className="max-w-lg space-y-4">
+
+            {/* Restaurant toggles */}
+            <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-700">
+                <p className="text-gray-300 text-sm font-semibold uppercase tracking-wide">Restaurant Settings</p>
+              </div>
+
+              {/* Chef Display toggle */}
+              <div className="px-4 py-3 flex items-center justify-between border-b border-gray-700/50">
+                <div>
+                  <p className="text-white text-sm font-medium">Chef Display (KDS)</p>
+                  <p className="text-gray-400 text-xs mt-0.5">
+                    {restaurant?.chef_display_enabled
+                      ? 'Chef manages order status on their console'
+                      : 'No chef console — orders auto-jump to Preparing'}
+                  </p>
+                </div>
+                <button
+                  onClick={handleToggleChefDisplay}
+                  disabled={togglingChefDisplay}
+                  className={`relative w-12 h-6 rounded-full transition-colors disabled:opacity-50 flex-shrink-0 ${
+                    restaurant?.chef_display_enabled ? 'bg-orange-500' : 'bg-gray-600'
+                  }`}
+                >
+                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                    restaurant?.chef_display_enabled ? 'translate-x-6' : 'translate-x-0.5'
+                  }`} />
+                </button>
+              </div>
+
+              {/* Auto-print toggle */}
+              <div className="px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-white text-sm font-medium">Auto-Print Kitchen Tickets</p>
+                  <p className="text-gray-400 text-xs mt-0.5">Automatically print ticket when new order arrives</p>
+                </div>
+                <button
+                  onClick={handleToggleAutoPrint}
+                  className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
+                    restaurant?.auto_print_enabled ? 'bg-orange-500' : 'bg-gray-600'
+                  }`}
+                >
+                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                    restaurant?.auto_print_enabled ? 'translate-x-6' : 'translate-x-0.5'
+                  }`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Printer settings */}
+            <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-700">
+                <p className="text-gray-300 text-sm font-semibold uppercase tracking-wide">Printer & Hardware</p>
+              </div>
+              <PrinterSettings />
+            </div>
+
+          </div>
+        </div>
       )}
     </div>
   )

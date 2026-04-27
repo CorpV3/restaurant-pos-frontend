@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { BluetoothDevice } from '../services/thermalPrinter'
 
-export type PrinterType = 'serial' | 'bluetooth'
+export type PrinterType = 'serial' | 'bluetooth' | 'usb'
 
 interface PrinterState {
   // Printer connection type
@@ -25,6 +25,8 @@ interface PrinterState {
   // Windows only: receipt printer IP for TCP cash drawer kick (port 9100)
   drawerIp: string
   drawerTcpPort: number
+  // Windows USB printer name (as shown in Windows printers list)
+  usbPrinterName: string
 
   setPrinterType: (t: PrinterType) => void
   setSerialPath: (p: string) => void
@@ -36,6 +38,7 @@ interface PrinterState {
   setCashDrawerEnabled: (v: boolean) => void
   setDrawerIp: (ip: string) => void
   setDrawerTcpPort: (p: number) => void
+  setUsbPrinterName: (name: string) => void
 }
 
 export const usePrinterStore = create<PrinterState>()(
@@ -52,6 +55,7 @@ export const usePrinterStore = create<PrinterState>()(
       cashDrawerEnabled: false,
       drawerIp: '',
       drawerTcpPort: 9100,
+      usbPrinterName: '',
 
       setPrinterType: (t) => set({ printerType: t }),
       setSerialPath: (p) => set({ serialPath: p }),
@@ -64,6 +68,7 @@ export const usePrinterStore = create<PrinterState>()(
       setCashDrawerEnabled: (v) => set({ cashDrawerEnabled: v }),
       setDrawerIp: (ip) => set({ drawerIp: ip }),
       setDrawerTcpPort: (p) => set({ drawerTcpPort: p }),
+      setUsbPrinterName: (name) => set({ usbPrinterName: name }),
     }),
     { name: 'pos-printer-settings' }
   )

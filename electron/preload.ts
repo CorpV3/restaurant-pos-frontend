@@ -6,4 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   openCashDrawer: (opts: { ip: string; port: number; bytes: number[] }) =>
     ipcRenderer.invoke('open-cash-drawer', opts),
+  listPrinters: () => ipcRenderer.invoke('list-printers'),
+  printRawUSB: (opts: { printerName: string; data: number[] }) =>
+    ipcRenderer.invoke('print-raw-usb', opts),
 })

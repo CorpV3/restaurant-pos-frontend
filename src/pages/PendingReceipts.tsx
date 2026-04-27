@@ -271,19 +271,61 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
     const { order, method } = completedReceipt
     return (
       <div className="flex-1 flex flex-col bg-gray-900 overflow-hidden">
-        <div className="flex-1 flex items-center justify-center p-4">
-          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm border border-green-700 shadow-2xl">
+
+        {/* ── Sticky action bar — always visible at top ── */}
+        <div className="flex-shrink-0 bg-gray-800 border-b border-green-700 px-4 py-3 flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-green-400 font-bold text-sm">Payment Collected</p>
+            <p className="text-gray-400 text-xs truncate">{tableName(order)} · {format(new Date(order.created_at), 'HH:mm dd/MM/yyyy')}</p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <button
+              onClick={handlePrint}
+              disabled={printing}
+              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded-lg font-medium disabled:opacity-50"
+            >
+              {printing ? '...' : '🖨 Receipt'}
+            </button>
+            <button
+              onClick={handlePrintLabels}
+              disabled={printingLabels}
+              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-yellow-300 text-sm rounded-lg font-medium disabled:opacity-50"
+            >
+              {printingLabels ? '...' : '🏷 Labels'}
+            </button>
+            <button
+              onClick={() => {
+                setCompletedReceipt(null)
+                setShowRefund(false)
+                load()
+              }}
+              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg font-bold"
+            >
+              Done ✓
+            </button>
+          </div>
+        </div>
+
+        {/* ── Scrollable receipt content ── */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="bg-gray-800 rounded-2xl w-full max-w-sm mx-auto border border-green-700/50 shadow-2xl">
             {/* Success header */}
-            <div className="text-center mb-5">
-              <div className="w-12 h-12 rounded-full bg-green-600 flex items-center justify-center mx-auto mb-2">
-                <span className="text-white font-bold text-xl">OK</span>
+            <div className="text-center p-5 pb-4">
+              <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center mx-auto mb-2">
+                <span className="text-white font-bold">OK</span>
               </div>
-              <h2 className="text-white text-xl font-bold">Payment Collected</h2>
-              <p className="text-gray-400 text-sm mt-1">{tableName(order)} · {format(new Date(order.created_at), 'HH:mm dd/MM/yyyy')}</p>
+              <h2 className="text-white text-lg font-bold">
+                {currencySymbol}{order.total_amount.toFixed(2)}
+              </h2>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded mt-1 inline-block ${
+                method === 'cash' ? 'bg-green-900/60 text-green-400' : 'bg-blue-900/60 text-blue-400'
+              }`}>
+                {method.toUpperCase()}
+              </span>
             </div>
 
             {/* Items */}
-            <div className="border-t border-gray-700 pt-4 mb-4 space-y-2">
+            <div className="border-t border-gray-700 px-5 py-4 space-y-2">
               {order.items.map((item) => (
                 <div key={item.id} className="flex justify-between text-sm">
                   <span className="text-gray-300">{item.quantity}× {item.menu_item_name}</span>
@@ -292,62 +334,28 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
               ))}
             </div>
 
-            {/* Total + method */}
-            <div className="border-t border-gray-700 pt-3 mb-5">
+            {/* Total */}
+            <div className="border-t border-gray-700 px-5 py-4">
               <div className="flex justify-between items-center">
-                <span className="text-gray-400 text-sm">Payment</span>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                  method === 'cash' ? 'bg-green-900/60 text-green-400' : 'bg-blue-900/60 text-blue-400'
-                }`}>
-                  {method.toUpperCase()}
-                </span>
-              </div>
-              <div className="flex justify-between items-center mt-2">
                 <span className="text-white font-semibold">Total</span>
-                <span className="text-orange-400 text-2xl font-bold">
+                <span className="text-orange-400 text-xl font-bold">
                   {currencySymbol}{order.total_amount.toFixed(2)}
                 </span>
               </div>
             </div>
+          </div>
 
-            {/* Actions */}
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                onClick={handlePrint}
-                disabled={printing}
-                className="py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded-xl font-medium disabled:opacity-50"
-              >
-                {printing ? '...' : 'Receipt'}
-              </button>
-              <button
-                onClick={handlePrintLabels}
-                disabled={printingLabels}
-                className="py-2.5 bg-gray-700 hover:bg-gray-600 text-yellow-300 text-sm rounded-xl font-medium disabled:opacity-50"
-              >
-                {printingLabels ? '...' : 'Labels'}
-              </button>
-              <button
-                onClick={() => {
-                  setCompletedReceipt(null)
-                  setShowRefund(false)
-                  load()
-                }}
-                className="py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-xl font-bold"
-              >
-                Done
-              </button>
-            </div>
-
-            {/* Refund */}
+          {/* Refund section */}
+          <div className="w-full max-w-sm mx-auto mt-3">
             {!showRefund ? (
               <button
                 onClick={() => setShowRefund(true)}
-                className="mt-3 w-full py-2 text-red-400 hover:text-red-300 text-sm underline"
+                className="w-full py-2 text-red-400 hover:text-red-300 text-sm underline"
               >
                 Issue Refund
               </button>
             ) : (
-              <div className="mt-3 border-t border-gray-700 pt-3 space-y-2">
+              <div className="bg-gray-800 rounded-2xl border border-gray-700 p-4 space-y-2">
                 <p className="text-gray-400 text-xs font-semibold uppercase tracking-wide">Refund</p>
                 <div className="flex gap-2">
                   <button
@@ -379,7 +387,6 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
                   placeholder="Reason (optional)"
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500"
                 />
-                {/* Card terminal waiting state */}
                 {refundMethod === 'card' && cardRefundStatus === 'waiting' && (
                   <div className="flex flex-col items-center gap-2 py-3 bg-blue-900/40 rounded-xl border border-blue-700">
                     <div className="animate-spin w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full" />
@@ -410,6 +417,8 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
               </div>
             )}
           </div>
+
+          <div className="h-4" /> {/* bottom padding */}
         </div>
       </div>
     )

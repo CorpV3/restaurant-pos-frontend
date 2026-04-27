@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import net from 'net'
+import { exec } from 'child_process'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -53,6 +54,43 @@ app.on('activate', () => {
 
 // IPC handlers
 ipcMain.handle('get-app-version', () => app.getVersion())
+
+// List installed Windows printers
+ipcMain.handle('list-printers', () => {
+  return new Promise<string[]>((resolve) => {
+    if (process.platform !== 'win32') { resolve([]); return }
+    exec('wmic printer get name /format:list', (err, stdout) => {
+      if (err) { resolve([]); return }
+      const names = stdout.split('\n')
+        .map((l) => l.replace(/^Name=/, '').trim())
+        .filter((l) => l.length > 0)
+      resolve(names)
+    })
+  })
+})
+
+// Send raw ESC/POS bytes to a named Windows USB/network printer via rundll32
+ipcMain.handle('print-raw-usb', (_event, { printerName, data }: { printerName: string; data: number[] }) => {
+  return new Promise<void>((resolve, reject) => {
+    if (process.platform !== 'win32') { reject(new Error('USB printing only supported on Windows')); return }
+    if (!printerName) { reject(new Error('No printer name configured. Set it in Settings → Printer.')); return }
+    const buf = Buffer.from(data)
+    // Write bytes to a temp file then copy /B to the printer port via net use or direct copy
+    const fs = require('fs') as typeof import('fs')
+    const os = require('os') as typeof import('os')
+    const tmpFile = path.join(os.tmpdir(), `pos_print_${Date.now()}.bin`)
+    fs.writeFile(tmpFile, buf, (writeErr) => {
+      if (writeErr) { reject(writeErr); return }
+      // "copy /B file \\.\printerName" is the raw-print trick on Windows
+      const cmd = `copy /B "${tmpFile}" "\\\\.\\${printerName}"`
+      exec(cmd, (err) => {
+        fs.unlink(tmpFile, () => {})
+        if (err) reject(new Error(`USB print failed: ${err.message}`))
+        else resolve()
+      })
+    })
+  })
+})
 
 ipcMain.handle('get-app-path', (_, name: string) => {
   return app.getPath(name as any)
