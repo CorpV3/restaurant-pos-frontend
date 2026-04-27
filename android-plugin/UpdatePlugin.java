@@ -272,7 +272,7 @@ public class UpdatePlugin extends Plugin {
 
         getActivity().runOnUiThread(() -> {
             try {
-                Intent intent = new Intent(Intent.ACTION_INSTALL_PACKAGE);
+                Intent intent = new Intent(Intent.ACTION_VIEW);
                 intent.setDataAndType(finalUri, "application/vnd.android.package-archive");
                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
