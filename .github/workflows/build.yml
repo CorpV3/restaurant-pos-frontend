@@ -137,8 +137,9 @@ jobs:
           mkdir -p "$XML_DIR"
           printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' \
             '<paths>' \
-            '  <external-files-path name="apk" path="." />' \
+            '  <external-files-path name="apk_external" path="." />' \
             '  <cache-path name="apk_cache" path="." />' \
+            '  <files-path name="apk_internal" path="." />' \
             '</paths>' > "$XML_DIR/file_paths.xml"
 
       - name: Build debug APK

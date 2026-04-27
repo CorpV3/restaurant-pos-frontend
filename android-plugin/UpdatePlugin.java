@@ -192,11 +192,20 @@ public class UpdatePlugin extends Plugin {
 
         if (conn == null) throw new Exception("Failed to open connection");
 
-        long totalBytes = conn.getContentLength(); // getContentLengthLong() is API 24+ — use int version for old Android
+        long totalBytes = conn.getContentLength(); // getContentLengthLong() is API 24+, use int version for old Android
         flog("INFO", "Content-Length: " + totalBytes + " bytes");
 
-        // Use internal files dir (always available, no permissions needed)
-        File storageDir = getContext().getFilesDir();
+        // API < 24: package installer reads via file:// — must be on external storage (internal is private)
+        // API >= 24: FileProvider handles permissions — external preferred, internal cache as fallback
+        File storageDir = getContext().getExternalFilesDir(null);
+        if (storageDir == null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                storageDir = getContext().getCacheDir(); // covered by <cache-path> in file_paths.xml
+                flog("WARN", "External storage unavailable — using cache dir (API >= 24)");
+            } else {
+                throw new Exception("External storage not available. Cannot install on this device.");
+            }
+        }
         File outFile = new File(storageDir, "pos_update.apk");
         flog("INFO", "Saving to: " + outFile.getAbsolutePath());
 
