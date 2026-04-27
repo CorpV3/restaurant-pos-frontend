@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import { fetchAppVersion, isNewerVersion, type AppVersionInfo } from '../../services/systemService'
 import { downloadAndInstallAndroid, isAndroidUpdateSupported } from '../../services/appUpdater'
 
-const APP_VERSION = '1.0.55' // Keep in sync with package.json
+const APP_VERSION = '1.0.56' // Keep in sync with package.json
 
 type UpdateState = 'available' | 'downloading' | 'ready' | 'error'
 
