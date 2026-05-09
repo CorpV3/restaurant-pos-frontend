@@ -1,19 +1,30 @@
 import { useState, useEffect } from 'react'
-import { Bluetooth, BluetoothOff, Printer, Check, RefreshCw } from 'lucide-react'
+import { Bluetooth, BluetoothOff, Printer, Check, RefreshCw, DollarSign } from 'lucide-react'
 import { thermalPrinter, type BluetoothDevice } from '../../services/thermalPrinter'
 import { usePrinterStore, type PrinterType } from '../../stores/printerStore'
+import { appLog } from '../../services/appLogger'
+import toast from 'react-hot-toast'
 
 export default function PrinterSettings() {
   const {
     printerType, serialPath, savedAddress, savedName,
-    autoPrint, printCopies, paperWidth, printDensity,
-    setPrinterType, setSerialPath, setSavedPrinter, setAutoPrint, setPrintCopies, setPaperWidth, setPrintDensity,
+    autoPrint, paperWidth, printDensity, printCopies,
+    cashDrawerEnabled, drawerIp, drawerTcpPort, usbPrinterName,
+    setPrinterType, setSerialPath, setSavedPrinter, setAutoPrint, setPaperWidth, setPrintDensity,
+    setPrintCopies, setCashDrawerEnabled, setDrawerIp, setDrawerTcpPort, setUsbPrinterName,
   } = usePrinterStore()
 
   const [isAndroid, setIsAndroid] = useState(false)
+  const [isWindows, setIsWindows] = useState(false)
   const [hasSerialPlugin, setHasSerialPlugin] = useState(false)
   const [detectedPaths, setDetectedPaths] = useState<string[]>([])
   const [serialPathInput, setSerialPathInput] = useState(serialPath)
+  const [drawerIpInput, setDrawerIpInput] = useState(drawerIp)
+  const [usbPrinterInput, setUsbPrinterInput] = useState(usbPrinterName)
+  const [availableUsbPrinters, setAvailableUsbPrinters] = useState<string[]>([])
+  const [openingDrawer, setOpeningDrawer] = useState(false)
+
+  const [scanningPaths, setScanningPaths] = useState(false)
 
   // Bluetooth state
   const [btSupported, setBtSupported] = useState(false)
@@ -27,6 +38,11 @@ export default function PrinterSettings() {
       typeof (window as any).Capacitor !== 'undefined' &&
       (window as any).Capacitor.getPlatform() === 'android'
     setIsAndroid(platform)
+    const isWin = !!(window as any).electronAPI
+    setIsWindows(isWin)
+    if (isWin && (window as any).electronAPI?.listPrinters) {
+      (window as any).electronAPI.listPrinters().then((list: string[]) => setAvailableUsbPrinters(list || []))
+    }
 
     const hasPlugin = thermalPrinter.hasSerialPlugin()
     setHasSerialPlugin(hasPlugin)
@@ -45,6 +61,31 @@ export default function PrinterSettings() {
   const applySerialPath = () => {
     setSerialPath(serialPathInput)
     thermalPrinter.serialPath = serialPathInput
+  }
+
+  const scanPaths = async () => {
+    setScanningPaths(true)
+    const paths = await thermalPrinter.listSerialPaths()
+    setDetectedPaths(paths)
+    appLog.info(`[USB Scan] Found ${paths.length} path(s): ${paths.join(', ') || '(none)'}`)
+    if (paths.length === 0) appLog.warn('[USB Scan] No serial/USB paths found — check device connection')
+    setScanningPaths(false)
+  }
+
+  const applyDrawerIp = () => {
+    setDrawerIp(drawerIpInput)
+  }
+
+  const openDrawer = async () => {
+    setOpeningDrawer(true)
+    try {
+      await thermalPrinter.openCashDrawer(printerType, savedAddress, drawerIp, drawerTcpPort)
+      toast.success('Cash drawer opened')
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Failed to open cash drawer')
+    } finally {
+      setOpeningDrawer(false)
+    }
   }
 
   const scan = async () => {
@@ -84,7 +125,7 @@ export default function PrinterSettings() {
         change: 5,
         currencySymbol: '£',
         footer: 'Test print successful!',
-      }, paperWidth, printerType, savedAddress, printDensity)
+      }, paperWidth, printerType, printerType === 'usb' ? usbPrinterName : savedAddress, printDensity)
     } catch (e: any) {
       alert('Print failed: ' + (e?.message ?? e))
     }
@@ -103,25 +144,135 @@ export default function PrinterSettings() {
         </div>
       )}
 
-      {/* ── Printer type selector (Android only) ── */}
-      {isAndroid && (
+      {/* ── Printer type selector ── */}
+      {(isAndroid || isWindows) && (
         <div className="bg-gray-700 rounded-xl p-4 space-y-3">
           <p className="text-gray-300 text-sm font-semibold">Connection Type</p>
-          <div className="grid grid-cols-2 gap-2">
-            {(['serial', 'bluetooth'] as PrinterType[]).map((t) => (
+          <div className="grid grid-cols-3 gap-2">
+            {(isAndroid ? ['serial', 'bluetooth', 'usb'] : ['usb', 'bluetooth']).map((t) => (
               <button
                 key={t}
-                onClick={() => setPrinterType(t)}
+                onClick={() => setPrinterType(t as PrinterType)}
                 className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${
                   printerType === t
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
                 }`}
               >
-                {t === 'serial' ? '🔌 Serial (Built-in)' : '📶 Bluetooth'}
+                {t === 'serial' ? '🔌 Built-in' : t === 'usb' ? '🖨 USB' : '📶 Bluetooth'}
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── Windows USB printer config ── */}
+      {isWindows && printerType === 'usb' && (
+        <div className="bg-gray-700 rounded-xl p-4 space-y-3">
+          <p className="text-gray-300 text-sm font-semibold">USB / Windows Printer</p>
+          <p className="text-gray-400 text-xs">Enter the exact name as shown in Windows Printers & Scanners.</p>
+          {availableUsbPrinters.length > 0 && (
+            <div className="space-y-1">
+              {availableUsbPrinters.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => { setUsbPrinterInput(name); setUsbPrinterName(name) }}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                    usbPrinterName === name
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                >
+                  {usbPrinterName === name ? '✓ ' : ''}{name}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              value={usbPrinterInput}
+              onChange={(e) => setUsbPrinterInput(e.target.value)}
+              placeholder="e.g. EPSON TM-T88VI"
+              className="flex-1 bg-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => setUsbPrinterName(usbPrinterInput)}
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg font-medium"
+            >
+              Save
+            </button>
+          </div>
+          {usbPrinterName && (
+            <p className="text-green-400 text-xs">✓ Using: {usbPrinterName}</p>
+          )}
+        </div>
+      )}
+
+      {/* ── Android USB printer config ── */}
+      {isAndroid && printerType === 'usb' && (
+        <div className="bg-gray-700 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-gray-300 text-sm font-semibold">USB Printer (Android)</p>
+            <button
+              onClick={scanPaths}
+              disabled={scanningPaths}
+              className="flex items-center gap-1 px-3 py-1.5 bg-purple-700 hover:bg-purple-600 text-white text-xs rounded-lg disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={scanningPaths ? 'animate-spin' : ''} />
+              {scanningPaths ? 'Scanning...' : 'Scan Paths'}
+            </button>
+          </div>
+
+          {detectedPaths.length > 0 && (
+            <div>
+              <p className="text-gray-400 text-xs mb-1">Detected device paths — tap to use:</p>
+              <div className="flex flex-wrap gap-1">
+                {detectedPaths.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => { setUsbPrinterInput(p); setUsbPrinterName(p) }}
+                    className={`text-xs px-2 py-1 rounded-lg font-mono ${
+                      usbPrinterName === p
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {detectedPaths.length === 0 && (
+            <p className="text-yellow-400 text-xs">
+              Tap "Scan Paths" to detect available USB/serial device paths. Results will also appear in the Logs tab.
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <input
+              value={usbPrinterInput}
+              onChange={(e) => setUsbPrinterInput(e.target.value)}
+              placeholder="/dev/usb/lp0"
+              className="flex-1 bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+            />
+            <button
+              onClick={() => setUsbPrinterName(usbPrinterInput || '/dev/usb/lp0')}
+              className="px-3 py-2 bg-blue-700 hover:bg-blue-600 text-white text-xs rounded-lg"
+            >
+              Apply
+            </button>
+          </div>
+          {usbPrinterName && (
+            <p className="text-green-400 text-xs">✓ Using: {usbPrinterName}</p>
+          )}
+          <button
+            onClick={() => { setUsbPrinterInput('/dev/usb/lp0'); setUsbPrinterName('/dev/usb/lp0') }}
+            className="text-xs text-blue-400 hover:text-blue-300"
+          >
+            Reset to /dev/usb/lp0
+          </button>
         </div>
       )}
 
@@ -275,6 +426,69 @@ export default function PrinterSettings() {
         <Printer size={16} />
         Test Print
       </button>
+
+      {/* ── Cash Drawer ── */}
+      <div className="bg-gray-700 rounded-xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <DollarSign className="text-green-400" size={18} />
+          <p className="text-gray-300 text-sm font-semibold">Cash Drawer</p>
+        </div>
+
+        {/* Auto-open toggle */}
+        <label className="flex items-center justify-between">
+          <span className="text-gray-300 text-sm">Auto-open after payment</span>
+          <button
+            onClick={() => setCashDrawerEnabled(!cashDrawerEnabled)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${cashDrawerEnabled ? 'bg-green-600' : 'bg-gray-600'}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cashDrawerEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </label>
+
+        {cashDrawerEnabled && (
+          <p className="text-gray-400 text-xs">
+            Drawer opens automatically after both cash and card payments.
+          </p>
+        )}
+
+        {/* Windows: printer IP config */}
+        {isWindows && (
+          <div className="space-y-2 pt-1">
+            <p className="text-gray-400 text-xs">
+              Windows: enter your receipt printer's IP address (port 9100 RAW).
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={drawerIpInput}
+                onChange={(e) => setDrawerIpInput(e.target.value)}
+                placeholder="192.168.1.100"
+                className="flex-1 bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-green-500"
+              />
+              <input
+                value={drawerTcpPort}
+                onChange={(e) => setDrawerTcpPort(Number(e.target.value) || 9100)}
+                className="w-20 bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-green-500"
+              />
+              <button
+                onClick={applyDrawerIp}
+                className="px-3 py-2 bg-green-700 hover:bg-green-600 text-white text-xs rounded-lg"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Manual open button */}
+        <button
+          onClick={openDrawer}
+          disabled={openingDrawer}
+          className="w-full py-2 bg-yellow-700 hover:bg-yellow-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl flex items-center justify-center gap-2"
+        >
+          <DollarSign size={16} />
+          {openingDrawer ? 'Opening...' : 'Open Cash Drawer'}
+        </button>
+      </div>
 
       {/* ── BT scan section ── */}
       {isAndroid && printerType === 'bluetooth' && btSupported && (

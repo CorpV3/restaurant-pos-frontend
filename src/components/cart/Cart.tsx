@@ -1,21 +1,28 @@
-import { useState, useEffect } from 'react'
-import { ShoppingCart, Tag } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { ShoppingCart, Tag, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useCartStore } from '../../stores/cartStore'
 import { useAuthStore } from '../../stores/authStore'
+import { useMenuStore } from '../../stores/menuStore'
 import { usePrinterStore } from '../../stores/printerStore'
 import { thermalPrinter } from '../../services/thermalPrinter'
 import { appLog } from '../../services/appLogger'
-import { refundOrder } from '../../services/orderService'
+import { refundOrder, type DeliveryDetails } from '../../services/orderService'
 import PaymentModal from '../payment/PaymentModal'
+import DeliveryModal from './DeliveryModal'
+import NumPad from '../ui/NumPad'
 import { fetchTables, type Table } from '../../services/tableService'
+import { mapBackendCategory } from '../../services/menuService'
+import type { MenuItem } from '../../types'
 
 interface ReceiptSnapshot {
   orderId: string
   items: { name: string; qty: number; price: number }[]
   subtotalAmt: number
   vatAmt: number
+  vatRate: number
+  vatEnabled: boolean
   discountAmt: number
   discountReason: string
   totalAmt: number
@@ -26,12 +33,52 @@ interface ReceiptSnapshot {
   date: string
 }
 
+import type { CartItem } from '../../types'
+
+/** Check if cart non-deal items satisfy all components of a deal */
+function matchDeal(deal: MenuItem, cartItems: CartItem[]) {
+  if (!deal.deal_components || deal.deal_components.length === 0) return null
+  const nonDealCart = cartItems.filter((ci: CartItem) => !ci.menuItem.is_deal)
+  const matched: string[] = []  // cartKeys of matched items
+
+  for (const comp of deal.deal_components) {
+    let needed = comp.qty
+    const candidates = nonDealCart.filter((ci: CartItem) => {
+      if (matched.includes(ci.cartKey ?? '')) return false
+      if (comp.type === 'category') {
+        const displayCat = mapBackendCategory(comp.value as string)
+        return ci.menuItem.category === displayCat
+      } else {
+        const ids = comp.value as string[]
+        return ids.includes(ci.menuItem.id)
+      }
+    })
+    for (const ci of candidates) {
+      if (needed <= 0) break
+      needed -= Math.min(ci.quantity, needed)
+      matched.push(ci.cartKey ?? ci.menuItem.id)
+    }
+    if (needed > 0) return null  // component not satisfied
+  }
+
+  const matchedTotal = nonDealCart
+    .filter((ci: CartItem) => matched.includes(ci.cartKey ?? ci.menuItem.id))
+    .reduce((s: number, ci: CartItem) => s + ci.menuItem.price * ci.quantity, 0)
+  const saving = parseFloat((matchedTotal - deal.price).toFixed(2))
+  return saving > 0 ? { deal, matched, saving } : null
+}
+
 export default function Cart() {
-  const { items, removeItem, updateQuantity, clearCart, subtotal, vat, total, discountAmount, discountReason, setDiscount, clearDiscount } =
+  const { items, removeItem, updateQuantity, clearCart, subtotal, vat, total, discountAmount, discountReason, setDiscount, clearDiscount, vatEnabled, vatRate, setVat, addItem } =
     useCartStore()
-  const { restaurant } = useAuthStore()
-  const { paperWidth, printerType, savedAddress, printDensity } = usePrinterStore()
+  const { restaurant, refreshRestaurant } = useAuthStore()
+  const { allItems: allMenuItems } = useMenuStore()
+  const { paperWidth, printerType, savedAddress, usbPrinterName, printDensity } = usePrinterStore()
+  const printAddress = printerType === 'usb' ? usbPrinterName : savedAddress
   const [showPayment, setShowPayment] = useState(false)
+  const [orderType, setOrderType] = useState<'dine-in' | 'delivery'>('dine-in')
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false)
+  const [deliveryDetails, setDeliveryDetails] = useState<DeliveryDetails | null>(null)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
   const [tables, setTables] = useState<Table[]>([])
   const [showTablePicker, setShowTablePicker] = useState(false)
@@ -47,6 +94,42 @@ export default function Cart() {
   const [refundMethod, setRefundMethod] = useState<'cash' | 'card'>('cash')
   const [refundReason, setRefundReason] = useState('')
   const [refunding, setRefunding] = useState(false)
+  const [dismissedDeal, setDismissedDeal] = useState<string | null>(null)
+
+  // Refresh restaurant data on mount to pick up any admin changes (e.g. gateway enabled)
+  useEffect(() => { refreshRestaurant() }, [])
+
+  // Detect if cart items match an available deal
+  const dealSuggestion = useMemo(() => {
+    if (items.length === 0) return null
+    const deals = allMenuItems.filter((m) => m.is_deal && m.deal_components?.length)
+    for (const deal of deals) {
+      if (dismissedDeal === deal.id) continue
+      const match = matchDeal(deal, items)
+      if (match) return match
+    }
+    return null
+  }, [items, allMenuItems, dismissedDeal])
+
+  const applyDealSuggestion = () => {
+    if (!dealSuggestion) return
+    const { deal, matched } = dealSuggestion
+    // Remove matched cart items (reduce qty or remove entirely)
+    matched.forEach((key) => removeItem(key))
+    // Add the deal item at deal price
+    addItem(deal)
+    toast.success(`${deal.name} applied — saved ${currencySymbol}${dealSuggestion.saving.toFixed(2)}!`)
+    setDismissedDeal(null)
+  }
+
+  // Sync VAT settings from restaurant whenever restaurant data changes
+  useEffect(() => {
+    if (restaurant) {
+      const enabled = restaurant.vat_enabled ?? true
+      const rate = restaurant.vat_rate ?? 20.0
+      setVat(enabled, rate)
+    }
+  }, [restaurant?.id, restaurant?.vat_enabled, restaurant?.vat_rate])
 
   useEffect(() => {
     if (restaurant?.id) {
@@ -57,6 +140,10 @@ export default function Cart() {
   }, [restaurant?.id])
 
   const currencySymbol = restaurant?.currency_symbol || '£'
+
+  const vatLabel = vatEnabled
+    ? `VAT (${(vatRate * 100).toFixed(0)}%)`
+    : 'VAT (N/A)'
 
   const handlePrint = async (receipt: ReceiptSnapshot) => {
     setPrinting(true)
@@ -76,7 +163,7 @@ export default function Cart() {
         cashReceived: receipt.cashReceived,
         change: receipt.change,
         currencySymbol,
-      }, paperWidth, printerType, savedAddress, printDensity)
+      }, paperWidth, printerType, printAddress, printDensity)
     } catch (e: any) {
       appLog.error(`Cart print failed: ${e?.message ?? e}`)
       toast.error(e?.message ?? 'Print failed — check printer connection')
@@ -93,7 +180,7 @@ export default function Cart() {
         receipt.orderId.slice(0, 8).toUpperCase(),
         restaurant?.name ?? 'Restaurant',
         32, // 58mm label width
-        printerType, savedAddress, printDensity,
+        printerType, printAddress, printDensity,
       )
       toast.success('Labels printed')
     } catch (e: any) {
@@ -122,12 +209,16 @@ export default function Cart() {
     if (isNaN(amt) || amt <= 0) { toast.error('Enter a valid refund amount'); return }
     if (amt > completedReceipt.totalAmt) { toast.error('Refund cannot exceed total paid'); return }
     setRefunding(true)
+    appLog.info(`Refund start: orderId=${completedReceipt.orderId} method=${refundMethod} amount=${amt}`)
     try {
       await refundOrder(completedReceipt.orderId, amt, refundMethod, refundReason)
+      appLog.info(`Refund success: orderId=${completedReceipt.orderId} amount=${amt} method=${refundMethod}`)
       toast.success(`Refund of ${currencySymbol}${amt.toFixed(2)} processed (${refundMethod})`)
       setShowRefund(false)
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Refund failed')
+      const msg = e?.response?.data?.detail || e?.message || 'Refund failed'
+      appLog.error(`Refund failed: method=${refundMethod} amount=${amt} error=${msg}`)
+      toast.error(msg)
     }
     setRefunding(false)
   }
@@ -157,9 +248,12 @@ export default function Cart() {
               <div className="flex justify-between text-sm text-gray-400">
                 <span>Subtotal</span><span>{currencySymbol}{r.subtotalAmt.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm text-gray-400">
-                <span>VAT (20%)</span><span>{currencySymbol}{r.vatAmt.toFixed(2)}</span>
-              </div>
+              {r.vatEnabled && (
+                <div className="flex justify-between text-sm text-gray-400">
+                  <span>VAT ({(r.vatRate * 100).toFixed(0)}%)</span>
+                  <span>{currencySymbol}{r.vatAmt.toFixed(2)}</span>
+                </div>
+              )}
               {r.discountAmt > 0 && (
                 <div className="flex justify-between text-sm text-green-400">
                   <span>Offer{r.discountReason ? ` (${r.discountReason})` : ''}</span>
@@ -192,9 +286,7 @@ export default function Cart() {
             {showRefund ? (
               <div className="bg-gray-600 rounded-xl p-3 mb-3 space-y-2">
                 <p className="text-white text-sm font-semibold">Process Refund</p>
-                <input type="number" value={refundAmount} onChange={e => setRefundAmount(e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-500 rounded-lg px-3 py-2 text-white text-sm"
-                  placeholder={`Amount (max ${currencySymbol}${r.totalAmt.toFixed(2)})`} step="0.01" />
+                <NumPad value={refundAmount} onChange={setRefundAmount} currencySymbol={currencySymbol} />
                 <div className="grid grid-cols-2 gap-2">
                   {(['cash', 'card'] as const).map(m => (
                     <button key={m} onClick={() => setRefundMethod(m)}
@@ -271,8 +363,28 @@ export default function Cart() {
             )}
           </div>
 
-          {/* Table selector */}
-          {tables.length > 0 && (
+          {/* Order type toggle */}
+          <div className="flex gap-1 bg-gray-700 rounded-lg p-1">
+            <button
+              onClick={() => { setOrderType('dine-in'); setDeliveryDetails(null) }}
+              className={`flex-1 py-1.5 rounded text-xs font-medium transition-colors ${
+                orderType === 'dine-in' ? 'bg-gray-900 text-white' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              🍽 Dine-in
+            </button>
+            <button
+              onClick={() => setOrderType('delivery')}
+              className={`flex-1 py-1.5 rounded text-xs font-medium transition-colors ${
+                orderType === 'delivery' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              🛵 Delivery
+            </button>
+          </div>
+
+          {/* Table selector — only for dine-in */}
+          {orderType === 'dine-in' && tables.length > 0 && (
             <div>
               <button
                 onClick={() => setShowTablePicker((v) => !v)}
@@ -317,10 +429,32 @@ export default function Cart() {
               )}
             </div>
           )}
+
+          {/* Delivery details summary */}
+          {orderType === 'delivery' && (
+            <button
+              onClick={() => setShowDeliveryModal(true)}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm border transition-colors ${
+                deliveryDetails
+                  ? 'bg-orange-500/20 border-orange-500 text-orange-300'
+                  : 'bg-gray-700 border-orange-600/50 text-orange-400 hover:border-orange-500 border-dashed'
+              }`}
+            >
+              <span className="text-xs uppercase tracking-wide text-gray-500 block">Customer</span>
+              {deliveryDetails ? (
+                <>
+                  <span className="font-medium text-white">{deliveryDetails.customerName}</span>
+                  <span className="text-gray-400 text-xs block truncate">{deliveryDetails.deliveryAddress}</span>
+                </>
+              ) : (
+                <span className="font-medium">Tap to enter customer details →</span>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Items — fixed max height so totals+pay always visible below */}
-        <div className="max-h-[45vh] overflow-y-auto p-3">
+        <div className="max-h-[22vh] overflow-y-auto p-3">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-gray-500">
               <ShoppingCart size={40} className="mb-2 text-gray-600" />
@@ -329,35 +463,56 @@ export default function Cart() {
             </div>
           ) : (
             <div className="space-y-2">
-              {items.map((item) => (
-                <div key={item.menuItem.id} className="bg-gray-700 rounded-lg p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-medium truncate">
-                        {item.menuItem.icon} {item.menuItem.name}
-                      </p>
-                      <p className="text-orange-400 text-sm">
-                        {currencySymbol}{(item.menuItem.price * item.quantity).toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => updateQuantity(item.menuItem.id, item.quantity - 1)}
-                        className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
-                      >-</button>
-                      <span className="text-white w-5 text-center text-sm">{item.quantity}</span>
-                      <button
-                        onClick={() => updateQuantity(item.menuItem.id, item.quantity + 1)}
-                        className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
-                      >+</button>
-                      <button
-                        onClick={() => removeItem(item.menuItem.id)}
-                        className="w-7 h-7 rounded bg-red-600/30 text-red-400 flex items-center justify-center hover:bg-red-600/50 ml-1"
-                      >×</button>
+              {items.map((item) => {
+                const key = item.cartKey ?? item.menuItem.id
+                return (
+                  <div key={key} className="bg-gray-700 rounded-lg p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium truncate">
+                          {item.menuItem.is_deal && (
+                            <span className="text-orange-400 text-xs mr-1">DEAL</span>
+                          )}
+                          {item.menuItem.icon} {item.menuItem.name}
+                        </p>
+                        {/* Deal selections — show chosen items indented */}
+                        {item.is_deal_item && item.deal_selections && item.deal_selections.length > 0 && (
+                          <div className="mt-1 space-y-0.5">
+                            {item.deal_selections.map((sel, si) => {
+                              const chosen = sel.item_name
+                                ? sel.item_name
+                                : sel.item_names?.join(', ') ?? ''
+                              return (
+                                <p key={si} className="text-gray-400 text-xs pl-2 border-l border-orange-500/40">
+                                  {sel.label}: {chosen}
+                                </p>
+                              )
+                            })}
+                          </div>
+                        )}
+                        <p className="text-orange-400 text-sm">
+                          {currencySymbol}{(item.menuItem.price * item.quantity).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => updateQuantity(key, item.quantity - 1)}
+                          className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
+                        >-</button>
+                        <span className="text-white w-5 text-center text-sm">{item.quantity}</span>
+                        <button
+                          onClick={() => updateQuantity(key, item.quantity + 1)}
+                          className="w-7 h-7 rounded bg-gray-600 text-white flex items-center justify-center hover:bg-gray-500"
+                        >+</button>
+                        <button
+                          onClick={() => removeItem(key)}
+                          className="w-7 h-7 rounded bg-red-600/30 text-red-400 flex items-center justify-center hover:bg-red-600/50 ml-1"
+                        >×</button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -368,10 +523,12 @@ export default function Cart() {
             <span>Subtotal</span>
             <span>{currencySymbol}{subtotal().toFixed(2)}</span>
           </div>
-          <div className="flex justify-between text-sm text-gray-400">
-            <span>VAT (20%)</span>
-            <span>{currencySymbol}{vat().toFixed(2)}</span>
-          </div>
+          {vatEnabled ? (
+            <div className="flex justify-between text-sm text-gray-400">
+              <span>{vatLabel}</span>
+              <span>{currencySymbol}{vat().toFixed(2)}</span>
+            </div>
+          ) : null}
           {discountAmount > 0 && (
             <div className="flex justify-between text-sm text-green-400">
               <span className="flex items-center gap-1">
@@ -387,6 +544,32 @@ export default function Cart() {
           </div>
         </div>
 
+        {/* Deal suggestion banner */}
+        {dealSuggestion && (
+          <div className="flex-shrink-0 mx-3 mb-2 bg-orange-500/15 border border-orange-500/50 rounded-xl p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2 flex-1 min-w-0">
+                <Sparkles size={16} className="text-orange-400 flex-shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-orange-300 text-xs font-bold leading-tight">Deal Available!</p>
+                  <p className="text-white text-xs leading-tight truncate">{dealSuggestion.deal.name}</p>
+                  <p className="text-green-400 text-xs font-semibold">Save {currencySymbol}{dealSuggestion.saving.toFixed(2)}</p>
+                </div>
+              </div>
+              <div className="flex gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => setDismissedDeal(dealSuggestion.deal.id)}
+                  className="text-gray-500 hover:text-gray-300 text-xs px-1.5 py-1 rounded"
+                >No</button>
+                <button
+                  onClick={applyDealSuggestion}
+                  className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-3 py-1 rounded-lg"
+                >Apply</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Offer + Pay buttons */}
         <div className="flex-shrink-0 px-4 pb-4 pt-2 bg-gray-800 space-y-2">
           {items.length > 0 && (
@@ -398,7 +581,13 @@ export default function Cart() {
             </button>
           )}
           <button
-            onClick={() => setShowPayment(true)}
+            onClick={() => {
+              if (orderType === 'delivery' && !deliveryDetails) {
+                setShowDeliveryModal(true)
+              } else {
+                setShowPayment(true)
+              }
+            }}
             disabled={items.length === 0}
             className={`w-full py-3 rounded-xl text-base font-bold transition-all ${
               items.length > 0
@@ -426,9 +615,11 @@ export default function Cart() {
                   </button>
                 ))}
               </div>
-              <input type="number" value={discountInput} onChange={e => setDiscountInput(e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white text-lg focus:outline-none focus:border-green-500"
-                placeholder={discountType === 'fixed' ? '0.00' : '0-100'} step="0.01" min="0" autoFocus />
+              <NumPad
+                value={discountInput}
+                onChange={setDiscountInput}
+                currencySymbol={discountType === 'fixed' ? currencySymbol : '%'}
+              />
               <input value={discountReasonInput} onChange={e => setDiscountReasonInput(e.target.value)}
                 className="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500"
                 placeholder="Reason (e.g. Regular customer, loyalty)" />
@@ -441,24 +632,43 @@ export default function Cart() {
         )}
       </div>
 
+      {showDeliveryModal && (
+        <DeliveryModal
+          onConfirm={(details) => { setDeliveryDetails(details); setShowDeliveryModal(false); setShowPayment(true) }}
+          onCancel={() => setShowDeliveryModal(false)}
+        />
+      )}
+
       {showPayment && restaurant && (
         <PaymentModal
           total={total()}
           currencySymbol={currencySymbol}
           cartItems={items}
           restaurantId={restaurant.id}
-          tableId={selectedTable?.id ?? null}
-          tableName={selectedTable ? `Table ${selectedTable.table_number}` : 'Takeaway'}
+          tableId={orderType === 'delivery' ? null : (selectedTable?.id ?? null)}
+          tableName={
+            orderType === 'delivery'
+              ? (deliveryDetails ? `${deliveryDetails.customerName} (Delivery)` : 'Delivery')
+              : (selectedTable ? `Table ${selectedTable.table_number}` : 'Takeaway')
+          }
           discountAmount={discountAmount}
           discountReason={discountReason}
+          delivery={orderType === 'delivery' ? deliveryDetails ?? undefined : undefined}
+          sumupEnabled={restaurant.sumup_enabled ?? false}
+          triposEnabled={restaurant.tripos_enabled ?? false}
+          manualCardEnabled={restaurant.manual_card_enabled ?? false}
           onClose={() => setShowPayment(false)}
           onComplete={(method, orderId, cashReceived) => {
-            const tName = selectedTable ? `Table ${selectedTable.table_number}` : 'Takeaway'
+            const tName = orderType === 'delivery'
+              ? (deliveryDetails ? `${deliveryDetails.customerName} (Delivery)` : 'Delivery')
+              : (selectedTable ? `Table ${selectedTable.table_number}` : 'Takeaway')
             const snap: ReceiptSnapshot = {
               orderId,
               items: items.map((i) => ({ name: i.menuItem.name, qty: i.quantity, price: i.menuItem.price })),
               subtotalAmt: subtotal(),
               vatAmt: vat(),
+              vatRate,
+              vatEnabled,
               discountAmt: discountAmount,
               discountReason,
               totalAmt: total(),
@@ -470,6 +680,8 @@ export default function Cart() {
             }
             clearCart()
             setSelectedTable(null)
+            setDeliveryDetails(null)
+            setOrderType('dine-in')
             setShowPayment(false)
             setCompletedReceipt(snap)
           }}

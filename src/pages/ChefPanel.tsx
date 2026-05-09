@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '../stores/authStore'
 import { usePrinterStore } from '../stores/printerStore'
 import { thermalPrinter } from '../services/thermalPrinter'
+import { ledService } from '../services/ledService'
+import { appLog } from '../services/appLogger'
 import { api } from '../services/api'
 import StatusBar from '../components/common/StatusBar'
 import PrinterSettings from '../components/settings/PrinterSettings'
@@ -59,8 +61,9 @@ function formatTime(dateStr: string): string {
 }
 
 export default function ChefPanel({ onLogout }: ChefPanelProps) {
-  const { restaurant } = useAuthStore()
-  const { paperWidth, printerType, savedAddress, printDensity, printCopies } = usePrinterStore()
+  const { restaurant, refreshRestaurant } = useAuthStore()
+  const { paperWidth, printerType, savedAddress, usbPrinterName, printDensity } = usePrinterStore()
+  const printAddress = printerType === 'usb' ? usbPrinterName : savedAddress
   const [tab, setTab] = useState<ChefTab>('kitchen')
   const [orders, setOrders] = useState<ChefOrder[]>([])
   const [historyOrders, setHistoryOrders] = useState<ChefOrder[]>([])
@@ -68,9 +71,58 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [markingReady, setMarkingReady] = useState<Set<string>>(new Set())
+  const advancingRef = useRef<Set<string>>(new Set())
   const [, setTick] = useState(0)
-  const seenOrderIds = useRef<Set<string>>(new Set())
-  const isFirstFetch = useRef(true)
+
+  const printedIds = useRef<Set<string>>(new Set())
+  const isFirstLoad = useRef(true)
+
+  const autoPrintOrder = useCallback(async (order: ChefOrder) => {
+    appLog.info(`autoPrint: order=${order.order_number ?? order.id.slice(0,8)} auto_print_enabled=${restaurant?.auto_print_enabled} printerType=${printerType} savedAddress=${savedAddress ?? 'none'}`)
+
+    if (!restaurant?.auto_print_enabled) {
+      appLog.info('autoPrint: skipped — auto_print_enabled is false/undefined')
+      return
+    }
+    if (printedIds.current.has(order.id)) {
+      appLog.info(`autoPrint: skipped — already printed order ${order.order_number}`)
+      return
+    }
+    printedIds.current.add(order.id)
+
+    const orderType = (order.order_type ?? 'table').toLowerCase()
+    const tableName = order.table
+      ? `Table ${order.table.table_number}`
+      : orderType === 'online' ? 'Online Order' : 'Takeaway'
+
+    appLog.info(`autoPrint: printing — order=${order.order_number} type=${orderType} table=${tableName} items=${order.items.length} copies=${restaurant.auto_print_copies ?? 1} paperWidth=${paperWidth}`)
+
+    try {
+      await thermalPrinter.printKitchenTicket(
+        {
+          orderNumber: order.order_number ?? order.id.slice(0, 8),
+          orderType,
+          tableName,
+          customerName: order.customer_name ?? undefined,
+          time: new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          items: order.items.map((i) => ({
+            name: i.menu_item_name,
+            qty: i.quantity,
+            note: i.special_instructions ?? undefined,
+          })),
+          note: order.special_instructions ?? undefined,
+        },
+        restaurant.auto_print_copies ?? 1,
+        paperWidth,
+        printerType,
+        printAddress,
+        printDensity,
+      )
+      appLog.info(`autoPrint: SUCCESS — kitchen ticket printed for order ${order.order_number}`)
+    } catch (e: any) {
+      appLog.warn(`autoPrint: FAILED — order=${order.order_number} error=${e?.message ?? e}`)
+    }
+  }, [restaurant, paperWidth, printerType, printAddress, printDensity])
 
   const fetchOrders = useCallback(async () => {
     if (!restaurant?.id) return
@@ -105,36 +157,21 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
         }))
         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
-      // Auto-print new orders if enabled (skip first fetch to avoid printing existing orders on load)
-      if (!isFirstFetch.current && restaurant.auto_print_enabled) {
-        const newOrders = mapped.filter((o) => !seenOrderIds.current.has(o.id))
+      if (isFirstLoad.current) {
+        mapped.forEach((o) => printedIds.current.add(o.id))
+        isFirstLoad.current = false
+        appLog.info(`autoPrint: first load — seeded ${mapped.length} existing orders, will print new ones from next poll`)
+      } else {
+        const newOrders = mapped.filter((o) => !printedIds.current.has(o.id))
+        if (newOrders.length > 0) {
+          appLog.info(`autoPrint: poll found ${newOrders.length} new order(s)`)
+          ledService.newOrderAlert()
+        }
         for (const order of newOrders) {
-          const tableLabel = order.order_type === 'online' ? 'Online' :
-            order.order_type === 'takeaway' ? 'Takeaway' :
-            order.table ? `Table ${order.table.table_number}` : 'Table'
-          const copies = printCopies ?? 1
-          for (let i = 0; i < copies; i++) {
-            try {
-              await thermalPrinter.printLabels(
-                order.items.map((item) => ({ name: item.menu_item_name, qty: item.quantity })),
-                tableLabel,
-                (order.order_number || order.id.slice(0, 8)).toUpperCase(),
-                restaurant.name,
-                paperWidth,
-                printerType,
-                savedAddress,
-                printDensity,
-              )
-            } catch {
-              // silently ignore print errors — don't block order display
-            }
-          }
+          autoPrintOrder(order)
         }
       }
 
-      // Update seen IDs
-      mapped.forEach((o) => seenOrderIds.current.add(o.id))
-      isFirstFetch.current = false
 
       setOrders(mapped)
     } catch {
@@ -142,7 +179,7 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
     } finally {
       setLoading(false)
     }
-  }, [restaurant?.id, restaurant?.auto_print_enabled, restaurant?.name, paperWidth, printerType, savedAddress, printDensity, printCopies])
+  }, [restaurant?.id, autoPrintOrder])
 
   const fetchHistory = useCallback(async () => {
     if (!restaurant?.id) return
@@ -185,6 +222,12 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
       setHistoryLoading(false)
     }
   }, [restaurant?.id])
+
+  useEffect(() => {
+    refreshRestaurant()
+    return () => { ledService.off() }
+  }, [])
+
 
   useEffect(() => {
     setLoading(true)
@@ -231,8 +274,10 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
   }
 
   const advanceStatus = async (orderId: string, currentStatus: string) => {
+    if (advancingRef.current.has(orderId)) return
     const nextStatus = NEXT_STATUS[currentStatus]
     if (!nextStatus) return
+    advancingRef.current.add(orderId)
     setMarkingReady((prev) => new Set(prev).add(orderId))
     try {
       await api.patch(`/api/v1/orders/${orderId}/status`, { status: nextStatus })
@@ -244,6 +289,7 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
     } catch (e: any) {
       alert('Failed to update: ' + (e?.response?.data?.detail || e?.message || 'Unknown error'))
     } finally {
+      advancingRef.current.delete(orderId)
       setMarkingReady((prev) => {
         const next = new Set(prev)
         next.delete(orderId)

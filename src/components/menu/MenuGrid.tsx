@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useCartStore } from '../../stores/cartStore'
 import { useAuthStore } from '../../stores/authStore'
+import { useMenuStore } from '../../stores/menuStore'
 import { fetchMenuItems, mapBackendCategory, getCategoryIcon } from '../../services/menuService'
-import type { MenuItem } from '../../types'
+import type { MenuItem, DealComponent } from '../../types'
 import type { BackendMenuItem } from '../../services/menuService'
 
 function resolveImageUrl(path: string | null | undefined): string | undefined {
@@ -34,6 +35,8 @@ function mapBackendToMenuItem(item: BackendMenuItem): MenuItem {
     icon: getCategoryIcon(item.category),
     available: item.is_available,
     imageUrl: resolveImageUrl(item.image_url),
+    is_deal: item.is_deal ?? false,
+    deal_components: item.deal_components as DealComponent[] | undefined,
   }
 }
 
@@ -45,6 +48,7 @@ interface MenuGridProps {
 export default function MenuGrid({ category, onCategoriesLoaded }: MenuGridProps) {
   const addItem = useCartStore((s) => s.addItem)
   const user = useAuthStore((s) => s.user)
+  const setMenuItems_store = useMenuStore((s) => s.setItems)
   const [animatingId, setAnimatingId] = useState<string | null>(null)
   const [menuItems, setMenuItems] = useState<MenuItem[]>(DEMO_MENU)
   const [isLoading, setIsLoading] = useState(false)
@@ -72,6 +76,7 @@ export default function MenuGrid({ category, onCategoriesLoaded }: MenuGridProps
         const mapped = items.map(mapBackendToMenuItem)
         if (mapped.length > 0) {
           setMenuItems(mapped)
+          setMenuItems_store(mapped)   // share with Cart for deal detection
           localStorage.setItem('pos_cached_menu', JSON.stringify(mapped))
           const cats = new Set(mapped.map((m) => m.category))
           onCategoriesLoaded?.(['All', ...Array.from(cats)])
@@ -93,6 +98,8 @@ export default function MenuGrid({ category, onCategoriesLoaded }: MenuGridProps
     ? menuItems
     : menuItems.filter((item) => item.category === category)
 
+  // All items (including deals) are added directly at their listed price.
+  // Cart detects if current items match a deal and suggests applying it.
   const handleItemClick = (item: MenuItem) => {
     addItem(item)
     setAnimatingId(item.id)
@@ -117,11 +124,17 @@ export default function MenuGrid({ category, onCategoriesLoaded }: MenuGridProps
           <button
             key={item.id}
             onClick={() => handleItemClick(item)}
-            className={`flex flex-col items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-orange-500 rounded-xl p-3 h-[150px] transition-all active:scale-95 ${
-              animatingId === item.id ? 'menu-item-pop menu-item-glow' : ''
-            }`}
+            className={`flex flex-col items-center justify-center bg-gray-800 hover:bg-gray-700 border rounded-xl p-3 h-[150px] transition-all active:scale-95 relative ${
+              item.is_deal
+                ? 'border-orange-600/70 hover:border-orange-400'
+                : 'border-gray-700 hover:border-orange-500'
+            } ${animatingId === item.id ? 'menu-item-pop menu-item-glow' : ''}`}
           >
-            {/* Image with text-initial fallback — no emoji (breaks on Android 5 WebView) */}
+            {item.is_deal && (
+              <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-orange-500 text-white px-1.5 py-0.5 rounded-full leading-none">
+                DEAL
+              </span>
+            )}
             {item.imageUrl ? (
               <img
                 src={item.imageUrl}

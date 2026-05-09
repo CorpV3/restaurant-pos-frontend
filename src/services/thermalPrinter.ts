@@ -15,6 +15,9 @@ const GS  = 0x1d;
 const DC2 = 0x12;
 const LF  = 0x0a;
 
+// ESC p m t1 t2 — cash drawer kick: pin 2, 50ms pulse
+const CASH_DRAWER_CMD = new Uint8Array([ESC, 0x70, 0x00, 0x19, 0xFF]);
+
 export const ESCPOS = {
   INIT:          [ESC, 0x40],           // 1B 40
   ALIGN_LEFT:    [ESC, 0x61, 0x00],     // 1B 61 00
@@ -73,6 +76,88 @@ export interface LabelData {
   orderRef: string;   // short order ID
   preparedAt: string; // formatted time string
   restaurantName?: string;
+}
+
+export interface PrepLabelData {
+  itemName: string;
+  itemCode: string;      // e.g. "CHK-2803-001"
+  preparedAt: string;    // "30/03/2026 14:25"
+  useBy: string;         // "31/03/2026 14:25"
+  allergens: string[];   // e.g. ["nuts", "dairy"]
+  preparedBy?: string;   // staff name
+  restaurantName?: string;
+}
+
+export function buildPrepLabelBytes(label: PrepLabelData, paperWidth = 32): Uint8Array {
+  const W = paperWidth;
+  const rows: number[][] = [];
+  const add = (...cmds: number[][]) => rows.push(...cmds);
+  const charBytes = (s: string) => Array.from(s).map((c) => c.charCodeAt(0));
+  const row = (s: string) => [...charBytes(s), LF];
+  const centered = (s: string) => {
+    const t = s.slice(0, W);
+    const pad = Math.max(0, Math.floor((W - t.length) / 2));
+    return ' '.repeat(pad) + t;
+  };
+  const leftRight = (left: string, right: string) => {
+    const l = left.slice(0, W - right.length - 1);
+    return l + ' '.repeat(W - l.length - right.length) + right;
+  };
+
+  add(ESCPOS.INIT, ESCPOS.ALIGN_CENTER);
+
+  // Restaurant name
+  if (label.restaurantName) {
+    add(row(centered(label.restaurantName.slice(0, W))));
+  }
+
+  // Item name — bold double height
+  add(ESCPOS.DOUBLE_HEIGHT, ESCPOS.BOLD_ON);
+  add(row(centered(label.itemName.slice(0, W))));
+  add(ESCPOS.NORMAL_SIZE, ESCPOS.BOLD_OFF);
+
+  // Item code
+  add(ESCPOS.BOLD_ON);
+  add(row(centered(label.itemCode)));
+  add(ESCPOS.BOLD_OFF);
+
+  add(ESCPOS.ALIGN_LEFT);
+  const divider = (c = '-') => row(c.repeat(W));
+  add(divider());
+
+  // Prepared at
+  add(row(leftRight('Prep:', label.preparedAt)));
+  // Use by — bold
+  add(ESCPOS.BOLD_ON);
+  add(row(leftRight('Use By:', label.useBy)));
+  add(ESCPOS.BOLD_OFF);
+
+  // Allergens
+  if (label.allergens.length > 0) {
+    add(divider());
+    const allergenStr = ('Allergens: ' + label.allergens.join(', ')).slice(0, W);
+    // Word wrap if too long
+    if (allergenStr.length <= W) {
+      add(row(allergenStr));
+    } else {
+      add(row('Allergens:'));
+      const a = label.allergens.join(', ').slice(0, W * 2);
+      for (let i = 0; i < a.length; i += W) {
+        add(row(a.slice(i, i + W)));
+      }
+    }
+  }
+
+  // Prepared by
+  if (label.preparedBy) {
+    add(divider());
+    add(row(`By: ${label.preparedBy}`.slice(0, W)));
+  }
+
+  add(ESCPOS.FEED_LINE);
+  add(ESCPOS.FEED_3, ESCPOS.CUT_PAPER);
+
+  return new Uint8Array(rows.flat());
 }
 
 // ── Receipt byte builder ──────────────────────────────────────────────────────
@@ -222,6 +307,71 @@ export function buildLabelBytes(label: LabelData, paperWidth = 32): Uint8Array {
 
 import { appLog } from './appLogger'
 
+// ── Kitchen ticket ────────────────────────────────────────────────────────────
+
+export interface KitchenTicketData {
+  orderNumber: string
+  orderType: string        // 'table' | 'online' | 'takeaway'
+  tableName?: string       // e.g. "Table 5"
+  customerName?: string
+  time: string
+  items: { name: string; qty: number; note?: string }[]
+  note?: string            // order-level special instructions
+}
+
+export function buildKitchenTicketBytes(data: KitchenTicketData, paperWidth = 48): Uint8Array {
+  const W = paperWidth
+  const rows: number[][] = []
+  const add = (...cmds: number[][]) => rows.push(...cmds)
+  const charBytes = (s: string) => Array.from(s.slice(0, W)).map((c) => c.charCodeAt(0))
+  const line = (s: string) => [...charBytes(s), LF]
+  const divider = () => line('-'.repeat(W))
+
+  add(ESCPOS.INIT)
+
+  // Header — large bold source label
+  add(ESCPOS.ALIGN_CENTER, ESCPOS.BOLD_ON, ESCPOS.DOUBLE_HEIGHT)
+  const sourceLabel =
+    data.orderType === 'table'
+      ? (data.tableName ?? 'DINE IN').toUpperCase()
+      : data.orderType === 'online'
+      ? 'ONLINE ORDER'
+      : 'TAKEAWAY'
+  add(line(sourceLabel))
+  add(ESCPOS.NORMAL_SIZE, ESCPOS.BOLD_OFF)
+
+  // Order number + time
+  add(ESCPOS.ALIGN_LEFT)
+  add(line(`#${data.orderNumber}`))
+  add(line(`Time: ${data.time}`))
+  if (data.customerName) add(line(`Name: ${data.customerName}`))
+  add(divider())
+
+  // Items
+  add(ESCPOS.ALIGN_LEFT, ESCPOS.BOLD_ON)
+  for (const item of data.items) {
+    const label = `${item.qty}x ${item.name}`
+    add(line(label.slice(0, W)))
+    add(ESCPOS.BOLD_OFF)
+    if (item.note) add(line(`  > ${item.note}`.slice(0, W)))
+    add(ESCPOS.BOLD_ON)
+  }
+  add(ESCPOS.BOLD_OFF)
+
+  // Order note
+  if (data.note) {
+    add(divider())
+    add(line(`Note: ${data.note}`.slice(0, W)))
+  }
+
+  add(divider())
+  add(ESCPOS.ALIGN_CENTER)
+  add(line('** KITCHEN COPY **'))
+  add(ESCPOS.FEED_3, ESCPOS.CUT_PAPER)
+
+  return new Uint8Array(rows.flat())
+}
+
 // ── Platform helpers ──────────────────────────────────────────────────────────
 
 function isAndroid(): boolean {
@@ -356,7 +506,7 @@ class ThermalPrinterService {
   async printReceipt(
     data: ReceiptData,
     paperWidth = 48,
-    printerType: 'serial' | 'bluetooth' = 'serial',
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
     savedAddress: string | null = null,
     printDensity = 3,
   ): Promise<void> {
@@ -375,8 +525,8 @@ class ThermalPrinterService {
     appLog.info(`printReceipt: type=${printerType} citaq=${!!citaq} serial=${!!serialPlugin} bt=${!!bt} android=${android} bytes=${bytes.length}`);
 
     // ── 0. CitaqPrinter JS interface — H10-3 direct serial (Android 4.x+) ─────
-    // Works even if Capacitor is not initialized (old Android versions)
-    if (citaq) {
+    // Skip when bluetooth is selected so user's chosen BT printer is used instead
+    if (citaq && printerType === 'serial') {
       appLog.info('path=CitaqJSInterface → writing to serial port');
       const b64 = btoa(String.fromCharCode(...bytes));
       const ok = citaq.print(b64);
@@ -415,7 +565,46 @@ class ThermalPrinterService {
       return;
     }
 
-    // ── 3. Desktop fallback (Windows / browser) ───────────────────────────────
+    // ── 3. Android USB via SerialPlugin (e.g. /dev/usb/lp0) ──────────────────
+    if (android && printerType === 'usb') {
+      const usbPlugin = getSerialPlugin();
+      appLog.info(`AndroidUSB: plugin=${!!usbPlugin} savedAddress="${savedAddress}"`);
+      if (usbPlugin) {
+        const usbPath = savedAddress || '/dev/usb/lp0';
+        appLog.info(`path=AndroidUSB → ${usbPath}`);
+        await this.printSerial(bytes, usbPlugin, usbPath);
+        appLog.info('AndroidUSB: print success');
+        return;
+      }
+      throw new Error('USB printing on Android requires the SerialPrinter plugin. Please reinstall the app.');
+    }
+
+    // ── 4. Windows USB via Electron raw printer API ───────────────────────────
+    if (!android && printerType === 'usb') {
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.printRawUSB) {
+        appLog.info(`path=ElectronUSB → ${savedAddress}`);
+        await electronAPI.printRawUSB({ printerName: savedAddress, data: Array.from(bytes) });
+        appLog.info('USB print success');
+        return;
+      }
+      appLog.warn('USB selected but electronAPI.printRawUSB not available — falling back to TCP');
+    }
+
+    // ── 5. Windows TCP (network / shared USB printer) ─────────────────────────
+    if (!android && savedAddress) {
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.printRawTCP) {
+        const [host, portStr] = (savedAddress || '').split(':');
+        const port = parseInt(portStr || '9100', 10);
+        appLog.info(`path=ElectronTCP → ${host}:${port}`);
+        await electronAPI.printRawTCP({ host, port, data: Array.from(bytes) });
+        appLog.info('TCP print success');
+        return;
+      }
+    }
+
+    // ── 6. Desktop fallback (Windows / browser) ───────────────────────────────
     // Only use browser print dialog when no printer plugins are available at all
     if (!android) {
       appLog.warn('path=Desktop (browser print dialog) — no printer plugins found');
@@ -431,14 +620,14 @@ class ThermalPrinterService {
     throw new Error('No printer configured. Go to Settings \u2192 Printer to set up your printer.');
   }
 
-  private async printSerial(bytes: Uint8Array, plugin: any): Promise<void> {
-    // Convert bytes to base64 for the Java plugin
+  private async printSerial(bytes: Uint8Array, plugin: any, path?: string): Promise<void> {
+    const devicePath = path ?? this.serialPath;
     const b64 = btoa(String.fromCharCode(...bytes));
     try {
-      await plugin.print({ path: this.serialPath, data: b64 });
+      await plugin.print({ path: devicePath, data: b64 });
     } catch (e: any) {
-      appLog.error(`SerialPlugin write error on ${this.serialPath}: ${e?.message ?? e}`);
-      throw new Error(`Serial print failed on ${this.serialPath}: ${e?.message ?? e}`);
+      appLog.error(`SerialPlugin write error on ${devicePath}: ${e?.message ?? e}`);
+      throw new Error(`Serial print failed on ${devicePath}: ${e?.message ?? e}`);
     }
   }
 
@@ -461,7 +650,7 @@ class ThermalPrinterService {
   async printLabel(
     label: LabelData,
     paperWidth = 32,
-    printerType: 'serial' | 'bluetooth' = 'serial',
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
     savedAddress: string | null = null,
     printDensity = 3,
   ): Promise<void> {
@@ -478,7 +667,7 @@ class ThermalPrinterService {
 
     appLog.info(`printLabel: "${label.itemName}" qty=${label.quantity} type=${printerType}`);
 
-    if (citaq) {
+    if (citaq && printerType === 'serial') {
       const b64 = btoa(String.fromCharCode(...bytes));
       citaq.print(b64);
       return;
@@ -494,6 +683,14 @@ class ThermalPrinterService {
       if (!this.connectedAddress) throw new Error('No Bluetooth printer connected.');
       await this.printBluetooth(bytes, bt);
       return;
+    }
+    if (android && printerType === 'usb') {
+      const usbPlugin = getSerialPlugin();
+      if (usbPlugin) {
+        await this.printSerial(bytes, usbPlugin, savedAddress || '/dev/usb/lp0');
+        return;
+      }
+      throw new Error('USB printing on Android requires the SerialPrinter plugin.');
     }
     if (!android) {
       // Desktop: just log — labels aren't useful in a browser print dialog
@@ -513,7 +710,7 @@ class ThermalPrinterService {
     orderRef: string,
     restaurantName: string,
     paperWidth = 32,
-    printerType: 'serial' | 'bluetooth' = 'serial',
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
     savedAddress: string | null = null,
     printDensity = 3,
   ): Promise<void> {
@@ -524,6 +721,165 @@ class ThermalPrinterService {
         paperWidth, printerType, savedAddress, printDensity,
       );
     }
+  }
+
+  async printPrepLabel(
+    label: PrepLabelData,
+    copies = 1,
+    paperWidth = 32,
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
+    savedAddress: string | null = null,
+    printDensity = 3,
+  ): Promise<void> {
+    const labelBytes = buildPrepLabelBytes(label, paperWidth);
+    const densityCmd = new Uint8Array(buildDensityCmd(printDensity));
+    const bytes = new Uint8Array(densityCmd.length + labelBytes.length);
+    bytes.set(densityCmd, 0);
+    bytes.set(labelBytes, densityCmd.length);
+
+    const citaq = getCitaqPrinter();
+    const serialPlugin = printerType === 'serial' ? getSerialPlugin() : null;
+    const bt = getBtSerial();
+    const android = isAndroid();
+
+    appLog.info(`printPrepLabel: "${label.itemName}" code=${label.itemCode} copies=${copies}`);
+
+    for (let i = 0; i < copies; i++) {
+      if (citaq) {
+        const b64 = btoa(String.fromCharCode(...bytes));
+        citaq.print(b64);
+      } else if (android && serialPlugin && savedAddress) {
+        await serialPlugin.openSerial({ devicePath: savedAddress, baudRate: 9600 });
+        await serialPlugin.writeSerial({ data: btoa(String.fromCharCode(...bytes)) });
+      } else if (android && bt && savedAddress) {
+        await bt.connect(savedAddress);
+        await bt.write({ data: Array.from(bytes) });
+      } else if (!android && printerType === 'serial' && serialPlugin && savedAddress) {
+        await serialPlugin.openSerial({ devicePath: savedAddress, baudRate: 9600 });
+        await serialPlugin.writeSerial({ data: btoa(String.fromCharCode(...bytes)) });
+      } else {
+        throw new Error('No printer configured');
+      }
+    }
+  }
+
+  async printRawBytes(
+    bytes: Uint8Array,
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
+    savedAddress: string | null = null,
+  ): Promise<void> {
+    const citaq = getCitaqPrinter()
+    const serialPlugin = printerType === 'serial' ? getSerialPlugin() : null
+    const bt = getBtSerial()
+    const android = isAndroid()
+
+    if (citaq && printerType === 'serial') {
+      const b64 = btoa(String.fromCharCode(...bytes))
+      citaq.print(b64)
+      return
+    }
+    if (serialPlugin) {
+      await this.printSerial(bytes, serialPlugin)
+      return
+    }
+    if (bt && printerType === 'bluetooth') {
+      if (!this.connectedAddress && savedAddress) await this.connect(savedAddress)
+      await this.printBluetooth(bytes, bt)
+      return
+    }
+    if (android && printerType === 'usb') {
+      const usbPlugin = getSerialPlugin()
+      if (usbPlugin) {
+        await this.printSerial(bytes, usbPlugin, savedAddress || '/dev/usb/lp0')
+        return
+      }
+    }
+    if (!android) {
+      // Desktop/browser fallback — not applicable for kitchen tickets
+      appLog.warn('printRawBytes: no printer path available on this platform')
+    }
+  }
+
+  async printKitchenTicket(
+    data: KitchenTicketData,
+    copies = 1,
+    paperWidth = 48,
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
+    savedAddress: string | null = null,
+    printDensity = 3,
+  ): Promise<void> {
+    const ticketBytes = buildKitchenTicketBytes(data, paperWidth)
+    const densityCmd = new Uint8Array(buildDensityCmd(printDensity))
+    const bytes = new Uint8Array(densityCmd.length + ticketBytes.length)
+    bytes.set(densityCmd, 0)
+    bytes.set(ticketBytes, densityCmd.length)
+    for (let i = 0; i < Math.max(1, copies); i++) {
+      await this.printRawBytes(bytes, printerType, savedAddress)
+    }
+  }
+
+  /**
+   * Windows (Electron): sends raw bytes over TCP to the receipt printer on port 9100.
+   *   Requires drawerIp to be configured in printer settings.
+   */
+  async openCashDrawer(
+    printerType: 'serial' | 'bluetooth' | 'usb' = 'serial',
+    savedAddress: string | null = null,
+    drawerIp = '',
+    drawerTcpPort = 9100,
+  ): Promise<void> {
+    const bytes = CASH_DRAWER_CMD;
+    const citaq = getCitaqPrinter();
+    const serialPlugin = printerType === 'serial' ? getSerialPlugin() : null;
+    const bt = getBtSerial();
+    const android = isAndroid();
+
+    appLog.info(`openCashDrawer: type=${printerType} citaq=${!!citaq} serial=${!!serialPlugin} bt=${!!bt} android=${android}`);
+
+    // ── Android: Citaq H10-3 built-in serial ──────────────────────────────────
+    if (citaq && printerType === 'serial') {
+      const b64 = btoa(String.fromCharCode(...bytes));
+      citaq.print(b64);
+      appLog.info('Cash drawer opened via Citaq');
+      return;
+    }
+
+    // ── Android: SerialPrinterPlugin ──────────────────────────────────────────
+    if (serialPlugin) {
+      await this.printSerial(bytes, serialPlugin);
+      appLog.info('Cash drawer opened via SerialPlugin');
+      return;
+    }
+
+    // ── Android: Bluetooth ────────────────────────────────────────────────────
+    if (bt && printerType === 'bluetooth') {
+      if (!this.connectedAddress && savedAddress) {
+        await this.connect(savedAddress);
+      }
+      if (this.connectedAddress) {
+        await this.printBluetooth(bytes, bt);
+        appLog.info('Cash drawer opened via Bluetooth');
+        return;
+      }
+    }
+
+    // ── Windows Electron: TCP socket to receipt printer on port 9100 ──────────
+    if (!android) {
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.openCashDrawer) {
+        await electronAPI.openCashDrawer({
+          ip: drawerIp,
+          port: drawerTcpPort,
+          bytes: Array.from(bytes),
+        });
+        appLog.info('Cash drawer opened via Electron IPC');
+        return;
+      }
+      appLog.warn('Cash drawer: no Electron IPC — configure printer IP in Settings → Printer');
+      throw new Error('Configure your printer IP address in Settings → Printer to open the cash drawer on Windows.');
+    }
+
+    throw new Error('Cash drawer: no printer path found. Check printer settings.');
   }
 
   private printDesktop(data: ReceiptData): void {

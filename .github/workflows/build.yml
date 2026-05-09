@@ -53,6 +53,20 @@ jobs:
             release/*.msi
           retention-days: 30
 
+      - name: Echo Windows download URL
+        shell: bash
+        run: |
+          echo ""
+          echo "============================================================"
+          echo "  WINDOWS BUILD COMPLETE"
+          if [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = "true" ]; then
+            echo "  Download: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RestaurantPOS-Setup.exe"
+          else
+            echo "  Artifact saved — download from Actions > Artifacts > windows-installer"
+            echo "  Release URL (after tagging): https://github.com/${{ github.repository }}/releases/download/<tag>/RestaurantPOS-Setup.exe"
+          fi
+          echo "============================================================"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # JOB 2 — Android APK (Capacitor)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -91,23 +105,71 @@ jobs:
             npx cap add android
           fi
 
-      - name: Inject printer plugins
+      - name: Inject plugins
         run: |
           PKG="android/app/src/main/java/com/corpv3/restaurantpos"
-          # Copy all plugin files — MainActivity.java replaces the generated one entirely
           cp android-plugin/SerialPrinterPlugin.java "$PKG/"
           cp android-plugin/PrinterJSInterface.java "$PKG/"
+          cp android-plugin/SumUpPlugin.java "$PKG/"
+          cp android-plugin/LedPlugin.java "$PKG/"
+          cp android-plugin/UpdatePlugin.java "$PKG/"
           cp android-plugin/MainActivity.java "$PKG/"
 
       - name: Sync Capacitor
         run: npx cap sync android
 
-      # ── Build debug APK — always ───────────────────────────────────────────
+      - name: Patch Android — install permission + FileProvider
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          XML_DIR="android/app/src/main/res/xml"
+
+          # Add REQUEST_INSTALL_PACKAGES permission (before <application> tag)
+          if ! grep -q "REQUEST_INSTALL_PACKAGES" "$MANIFEST"; then
+            sed -i 's|<application|<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <application|' "$MANIFEST"
+          fi
+
+          # Add FileProvider inside <application> (before closing </application>)
+          if ! grep -q "fileprovider" "$MANIFEST"; then
+            sed -i 's|</application>|    <provider\n            android:name="androidx.core.content.FileProvider"\n            android:authorities="${applicationId}.fileprovider"\n            android:exported="false"\n            android:grantUriPermissions="true">\n            <meta-data\n                android:name="android.support.FILE_PROVIDER_PATHS"\n                android:resource="@xml/file_paths" />\n        </provider>\n    </application>|' "$MANIFEST"
+          fi
+
+          # Create res/xml/file_paths.xml for FileProvider
+          mkdir -p "$XML_DIR"
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' \
+            '<paths>' \
+            '  <external-files-path name="apk_external" path="." />' \
+            '  <cache-path name="apk_cache" path="." />' \
+            '  <files-path name="apk_internal" path="." />' \
+            '</paths>' > "$XML_DIR/file_paths.xml"
+
       - name: Build debug APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+
+      - name: Re-sign APK with consistent keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "No keystore secret found — APK will use random debug signature (in-app updates will fail)"
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > /tmp/restaurantpos.keystore
+          APK=$(find android -name '*-debug.apk' | head -1)
+          echo "Signing: $APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          "$APKSIGNER" sign \
+            --ks /tmp/restaurantpos.keystore \
+            --ks-pass "pass:$ANDROID_STORE_PASSWORD" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --key-pass "pass:$ANDROID_KEY_PASSWORD" \
+            "$APK"
+          echo "APK signed successfully with consistent keystore"
 
       - name: Rename APK with version tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -131,13 +193,208 @@ jobs:
           path: RestaurantPOS-*-android.apk
           retention-days: 90
 
+      - name: Echo Android download URL
+        run: |
+          echo ""
+          echo "============================================================"
+          echo "  ANDROID BUILD COMPLETE"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "  Download: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-android.apk"
+          else
+            echo "  Artifact saved — download from Actions > Artifacts > android-debug-apk"
+            echo "  Release URL (after tagging): https://github.com/${{ github.repository }}/releases/download/<tag>/RestaurantPOS-<tag>-android.apk"
+          fi
+          echo "============================================================"
+
 # ─────────────────────────────────────────────────────────────────────────────
-# JOB 3 — GitHub Release
-#          Publishes BOTH Windows .exe AND Android .apk to the same release
+# JOB 3 — iOS IPA (Capacitor, unsigned — sideload via AltStore / Configurator)
+#          Targets iOS 13+ for broad iPad compatibility (Air 2, mini 4, etc.)
+# ─────────────────────────────────────────────────────────────────────────────
+  build-ios:
+    name: iOS IPA
+    runs-on: macos-latest
+    env:
+      CI: 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build web assets
+        run: npm run build
+
+      - name: Install Capacitor iOS platform
+        run: npm install @capacitor/ios@5 --legacy-peer-deps
+
+      - name: Add iOS platform
+        run: npx cap add ios
+
+      - name: Sync Capacitor
+        run: npx cap sync ios
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd ios/App
+          pod install
+
+      - name: Set minimum deployment target to iOS 13
+        run: |
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 13.0/g' \
+            ios/App/App.xcodeproj/project.pbxproj
+
+      - name: Add required iOS permissions to Info.plist
+        run: |
+          PLIST="ios/App/App/Info.plist"
+          # Bluetooth — needed for thermal printer
+          /usr/libexec/PlistBuddy -c \
+            "Add :NSBluetoothAlwaysUsageDescription string 'Required to connect to Bluetooth thermal printers'" \
+            "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c \
+            "Add :NSBluetoothPeripheralUsageDescription string 'Required to connect to Bluetooth thermal printers'" \
+            "$PLIST" 2>/dev/null || true
+          # Local network — needed to reach restaurant server on LAN
+          /usr/libexec/PlistBuddy -c \
+            "Add :NSLocalNetworkUsageDescription string 'Required to connect to the restaurant POS server'" \
+            "$PLIST" 2>/dev/null || true
+          # Camera — QR code scanning
+          /usr/libexec/PlistBuddy -c \
+            "Add :NSCameraUsageDescription string 'Used for scanning QR codes'" \
+            "$PLIST" 2>/dev/null || true
+
+      - name: Import signing certificate (if configured)
+        if: env.APPLE_CERTIFICATE_BASE64 != ''
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > certificate.p12
+          security create-keychain -p "temp" build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "temp" build.keychain
+          security list-keychains -d user -s build.keychain
+
+      - name: Import provisioning profile (if configured)
+        if: env.APPLE_PROVISIONING_PROFILE != ''
+        env:
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+        run: |
+          echo "$APPLE_PROVISIONING_PROFILE" | base64 --decode > profile.mobileprovision
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: Build iOS archive
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE_BASE64" ] && [ -n "$DEVELOPMENT_TEAM" ]; then
+            echo "Building signed IPA..."
+            xcodebuild \
+              -workspace ios/App/App.xcworkspace \
+              -scheme App \
+              -configuration Release \
+              -archivePath "$PWD/App.xcarchive" \
+              -destination "generic/platform=iOS" \
+              IPHONEOS_DEPLOYMENT_TARGET=13.0 \
+              CODE_SIGN_STYLE=Automatic \
+              DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+              archive 2>&1 | tail -100
+          else
+            echo "No signing secrets found — building unsigned IPA (install via AltStore)"
+            xcodebuild \
+              -workspace ios/App/App.xcworkspace \
+              -scheme App \
+              -configuration Release \
+              -archivePath "$PWD/App.xcarchive" \
+              -destination "generic/platform=iOS" \
+              IPHONEOS_DEPLOYMENT_TARGET=13.0 \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO \
+              archive 2>&1 | tail -100
+          fi
+
+      - name: Export signed IPA (if signed)
+        if: env.APPLE_CERTIFICATE_BASE64 != ''
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          [ -z "$VERSION" ] && VERSION="dev"
+          cat > exportOptions.plist << 'PLIST_EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>ad-hoc</string>
+            <key>compileBitcode</key><false/>
+          </dict></plist>
+          PLIST_EOF
+          xcodebuild -exportArchive \
+            -archivePath "$PWD/App.xcarchive" \
+            -exportOptionsPlist exportOptions.plist \
+            -exportPath "$PWD/ipa" 2>&1 | tail -30
+          cp ipa/*.ipa "RestaurantPOS-${VERSION}-ios.ipa" || true
+
+      - name: Package unsigned IPA (fallback)
+        if: env.APPLE_CERTIFICATE_BASE64 == ''
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+        run: |
+          APP=$(find App.xcarchive/Products/Applications -name '*.app' | head -1)
+          mkdir -p Payload
+          cp -r "$APP" Payload/App.app
+          VERSION="${{ github.ref_name }}"
+          [ -z "$VERSION" ] && VERSION="dev"
+          zip -r "RestaurantPOS-${VERSION}-ios.ipa" Payload/
+          rm -rf Payload
+          ls -lh RestaurantPOS-*.ipa
+
+      - name: Upload iOS debug artifact (branch)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-debug-ipa
+          path: "*.ipa"
+          retention-days: 14
+
+      - name: Upload iOS release artifact (tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-ipa
+          path: "RestaurantPOS-*-ios.ipa"
+          retention-days: 90
+
+      - name: Echo iOS download URL
+        run: |
+          echo ""
+          echo "============================================================"
+          echo "  iOS BUILD COMPLETE"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "  Download: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-ios.ipa"
+          else
+            echo "  Artifact saved — download from Actions > Artifacts > ios-debug-ipa"
+            echo "  Release URL (after tagging): https://github.com/${{ github.repository }}/releases/download/<tag>/RestaurantPOS-<tag>-ios.ipa"
+          fi
+          echo "============================================================"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 4 — GitHub Release
+#          Publishes Windows .exe, Android .apk, and iOS .ipa to the release
 # ─────────────────────────────────────────────────────────────────────────────
   release:
     name: Publish GitHub Release
-    needs: [build-windows, build-android]
+    needs: [build-windows, build-android, build-ios]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
@@ -154,38 +411,73 @@ jobs:
           name: android-release-apk
           path: ./artifacts/android
 
-      - name: Create GitHub Release
+      - name: Download iOS IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-release-ipa
+          path: ./artifacts/ios
+
+      - name: Create GitHub Release (public repo)
         uses: softprops/action-gh-release@v1
         with:
+          repository: CorpV3/restaurant-pos-release
+          token: ${{ secrets.RELEASES_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           files: |
             artifacts/windows/*.exe
             artifacts/windows/*.msi
             artifacts/android/*.apk
+            artifacts/ios/*.ipa
           draft: false
           prerelease: false
-          generate_release_notes: true
           body: |
             ## Restaurant POS ${{ github.ref_name }}
 
-            ### Downloads
-            | Platform | File | Notes |
-            |----------|------|-------|
-            | Windows | `RestaurantPOS-Setup.exe` | Run installer, supports auto-update |
-            | Android | `RestaurantPOS-${{ github.ref_name }}-android.apk` | Sideload — enable "Install Unknown Apps" in Android settings |
+            ### Direct Download Links
+            | Platform | Download | Notes |
+            |----------|----------|-------|
+            | Windows | [RestaurantPOS-Setup.exe](https://github.com/CorpV3/restaurant-pos-release/releases/download/${{ github.ref_name }}/RestaurantPOS-Setup.exe) | Run installer |
+            | Android | [RestaurantPOS-${{ github.ref_name }}-android.apk](https://github.com/CorpV3/restaurant-pos-release/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-android.apk) | Enable "Install Unknown Apps" first |
+            | iOS / iPad | [RestaurantPOS-${{ github.ref_name }}-ios.ipa](https://github.com/CorpV3/restaurant-pos-release/releases/download/${{ github.ref_name }}/RestaurantPOS-${{ github.ref_name }}-ios.ipa) | Sideload via AltStore or Sideloadly |
 
             ### Android Thermal Printer Setup
             **Citaq H10-3 (built-in serial printer):**
-            - Internal printer on `/dev/ttyS1` is used automatically — no setup needed
             - Open POS app → **Settings → Printer** → select **Serial (Built-in)**
-            - Tap **Test Print** to verify
+            - Default port `/dev/ttyS1` — tap **Test Print** to verify
 
             **External Bluetooth printer:**
             1. Pair printer in **Android Settings → Bluetooth**
             2. Open POS app → **Settings → Printer** → select **Bluetooth**
-            3. Tap **Scan**, then **Use** next to your printer
-            4. Tap **Test Print** to verify
+            3. Tap **Scan** → **Use** next to your printer → **Test Print**
 
-            > Compatible with 58mm and 80mm ESC/POS thermal printers
-            > (Citaq H10-3 built-in, Sunmi, GOOJPRT, Rongta, Xprinter, Epson TM)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Post download links to job summary
+        run: |
+          PUB_REPO="CorpV3/restaurant-pos-release"
+          TAG="${{ github.ref_name }}"
+          BASE="https://github.com/${PUB_REPO}/releases/download/${TAG}"
+          PAGE="https://github.com/${PUB_REPO}/releases/tag/${TAG}"
+
+          # Print to console
+          echo ""
+          echo "================================================================"
+          echo "  RELEASE ${TAG} - PUBLIC DOWNLOAD LINKS"
+          echo "================================================================"
+          echo "  Windows : ${BASE}/RestaurantPOS-Setup.exe"
+          echo "  Android : ${BASE}/RestaurantPOS-${TAG}-android.apk"
+          echo "  iOS     : ${BASE}/RestaurantPOS-${TAG}-ios.ipa"
+          echo "  Release : ${PAGE}"
+          echo "================================================================"
+
+          # Write clickable links to the GitHub Actions job summary page
+          {
+            echo "## Restaurant POS ${TAG} — Public Download Links"
+            echo ""
+            echo "| Platform | Direct Download |"
+            echo "|----------|----------------|"
+            echo "| 🪟 Windows | [RestaurantPOS-Setup.exe](${BASE}/RestaurantPOS-Setup.exe) |"
+            echo "| 🤖 Android | [RestaurantPOS-${TAG}-android.apk](${BASE}/RestaurantPOS-${TAG}-android.apk) |"
+            echo "| 🍎 iOS iPad | [RestaurantPOS-${TAG}-ios.ipa](${BASE}/RestaurantPOS-${TAG}-ios.ipa) |"
+            echo ""
+            echo "📦 [View full release page](${PAGE})"
+          } >> "$GITHUB_STEP_SUMMARY"

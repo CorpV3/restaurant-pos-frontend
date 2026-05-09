@@ -25,6 +25,7 @@ interface Restaurant {
   chef_display_enabled?: boolean
   auto_print_enabled?: boolean
   auto_print_copies?: number
+  manual_card_enabled?: boolean
 }
 
 interface AuthStore {
@@ -34,8 +35,10 @@ interface AuthStore {
   isLoading: boolean
   error: string | null
   login: (username: string, password: string, restaurantCode: string) => Promise<boolean>
+  loginWithToken: (token: string, user: User, restaurant: Restaurant) => void
   logout: () => Promise<void>
   restoreSession: () => void
+  refreshRestaurant: () => Promise<void>
 }
 
 async function resolveRestaurant(restaurantCode: string, token: string, userRestaurantId: string | null): Promise<Restaurant | null> {
@@ -85,6 +88,10 @@ export const useAuthStore = create<AuthStore>((set) => ({
   isAuthenticated: false,
   isLoading: false,
   error: null,
+
+  loginWithToken: (token: string, user: User, restaurant: Restaurant) => {
+    set({ user, restaurant, isAuthenticated: true, isLoading: false, error: null })
+  },
 
   login: async (username: string, password: string, restaurantCode: string) => {
     set({ isLoading: true, error: null })
@@ -149,8 +156,25 @@ export const useAuthStore = create<AuthStore>((set) => ({
       try {
         const user = JSON.parse(userStr)
         const restaurant = restaurantStr ? JSON.parse(restaurantStr) : null
-        set({ user, restaurant, isAuthenticated: true })
+        set({ user, restaurant, isAuthenticated: true, error: null })
       } catch { /* ignore */ }
+    }
+  },
+
+  /** Re-fetch the current restaurant from API to pick up any admin changes (e.g. gateway enabled). */
+  refreshRestaurant: async () => {
+    const restaurantId = localStorage.getItem('pos_restaurant_id')
+    const token = localStorage.getItem('pos_access_token')
+    if (!restaurantId || !token) return
+    try {
+      const res = await api.get(`/api/v1/restaurants/${restaurantId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const fresh: Restaurant = res.data
+      localStorage.setItem('pos_restaurant', JSON.stringify(fresh))
+      set({ restaurant: fresh })
+    } catch {
+      // silently ignore — stale data is better than crashing
     }
   },
 }))

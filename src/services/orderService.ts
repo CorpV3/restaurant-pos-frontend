@@ -1,13 +1,32 @@
 import { api } from './api'
 import type { CartItem } from '../types'
 
+export interface DeliveryDetails {
+  customerName: string
+  customerPhone: string
+  deliveryAddress: string
+}
+
 export interface CreateOrderPayload {
   restaurant_id: string
   table_id?: string | null
+  order_type?: string
+  customer_name?: string
+  customer_phone?: string
+  delivery_address?: string
   items: {
     menu_item_id: string
     quantity: number
     unit_price: number
+    is_deal_item?: boolean
+    deal_selections?: {
+      step: number
+      label: string
+      item_id?: string
+      item_name?: string
+      item_ids?: string[]
+      item_names?: string[]
+    }[]
   }[]
   customer_notes?: string
   discount_amount?: number
@@ -29,15 +48,26 @@ export async function createOrder(
   restaurantId: string,
   tableId: string | null,
   discountAmount = 0,
-  discountReason = ''
+  discountReason = '',
+  delivery?: DeliveryDetails
 ): Promise<OrderResponse> {
   const payload: CreateOrderPayload = {
     restaurant_id: restaurantId,
     table_id: tableId || null,
+    ...(delivery ? {
+      order_type: 'ONLINE',
+      customer_name: delivery.customerName,
+      customer_phone: delivery.customerPhone,
+      delivery_address: delivery.deliveryAddress,
+    } : {}),
     items: cartItems.map((ci) => ({
       menu_item_id: ci.menuItem.id,
       quantity: ci.quantity,
       unit_price: ci.menuItem.price,
+      ...(ci.is_deal_item ? {
+        is_deal_item: true,
+        deal_selections: ci.deal_selections,
+      } : {}),
     })),
     discount_amount: discountAmount || undefined,
     discount_reason: discountReason || undefined,
@@ -97,14 +127,18 @@ export interface PendingOrderItem {
   menu_item_name: string
   quantity: number
   unit_price: number
+  special_instructions?: string
 }
 
 export interface PendingOrder {
   id: string
+  order_number?: string
+  order_type?: string
   status: string
   total_amount: number
   table_id: string | null
   table?: { id: string; table_number: string | number; status: string } | null
+  customer_name?: string
   created_at: string
   items: PendingOrderItem[]
 }
@@ -139,6 +173,49 @@ export async function fetchPendingOrders(restaurantId: string): Promise<PendingO
         menu_item_name: item.menu_item_name ?? item.item_name ?? 'Unknown',
         quantity: item.quantity,
         unit_price: item.unit_price ?? item.item_price ?? 0,
+      })),
+    }
+  })
+}
+
+/** Fetch orders that need to be physically served (preparing/pending/confirmed/ready) */
+export async function fetchActiveOrders(restaurantId: string): Promise<PendingOrder[]> {
+  const [tablesRes, ...statusResults] = await Promise.all([
+    api.get(`/api/v1/restaurants/${restaurantId}/tables`).catch(() => ({ data: [] })),
+    api.get(`/api/v1/restaurants/${restaurantId}/orders`, { params: { status: 'pending', limit: 50 } }),
+    api.get(`/api/v1/restaurants/${restaurantId}/orders`, { params: { status: 'confirmed', limit: 50 } }),
+    api.get(`/api/v1/restaurants/${restaurantId}/orders`, { params: { status: 'preparing', limit: 50 } }),
+    api.get(`/api/v1/restaurants/${restaurantId}/orders`, { params: { status: 'ready', limit: 50 } }),
+  ])
+
+  const tables: any[] = Array.isArray(tablesRes.data) ? tablesRes.data : (tablesRes.data?.tables ?? [])
+  const tableMap = Object.fromEntries(tables.map((t: any) => [t.id, t]))
+
+  const allRaw: any[] = statusResults.flatMap((r) =>
+    Array.isArray(r.data) ? r.data : (r.data?.orders ?? [])
+  )
+
+  return allRaw.map((o) => {
+    const tableData = o.table_id ? tableMap[o.table_id] : null
+    return {
+      id: o.id,
+      order_number: o.order_number,
+      order_type: o.order_type,
+      status: o.status,
+      total_amount: o.total_amount ?? o.total ?? 0,
+      table_id: o.table_id ?? null,
+      table: tableData
+        ? { id: tableData.id, table_number: tableData.table_number, status: tableData.status }
+        : null,
+      customer_name: o.customer_name,
+      created_at: o.created_at,
+      items: (o.items ?? []).map((item: any) => ({
+        id: item.id,
+        menu_item_id: item.menu_item_id,
+        menu_item_name: item.menu_item_name ?? item.item_name ?? 'Unknown',
+        quantity: item.quantity,
+        unit_price: item.unit_price ?? item.item_price ?? 0,
+        special_instructions: item.special_instructions,
       })),
     }
   })

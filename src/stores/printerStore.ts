@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { BluetoothDevice } from '../services/thermalPrinter'
 
-export type PrinterType = 'serial' | 'bluetooth'
+export type PrinterType = 'serial' | 'bluetooth' | 'usb'
 
 interface PrinterState {
   // Printer connection type
@@ -20,6 +20,15 @@ interface PrinterState {
   paperWidth: 32 | 42 | 48
   // Print darkness 0 (lightest) – 7 (darkest), ESC/POS DC2 # n
   printDensity: number
+  // Number of receipt copies to print
+  printCopies: number
+  // Cash drawer: auto-open after payment (cash + card)
+  cashDrawerEnabled: boolean
+  // Windows only: receipt printer IP for TCP cash drawer kick (port 9100)
+  drawerIp: string
+  drawerTcpPort: number
+  // Windows USB printer name (as shown in Windows printers list)
+  usbPrinterName: string
 
   setPrinterType: (t: PrinterType) => void
   setSerialPath: (p: string) => void
@@ -28,6 +37,11 @@ interface PrinterState {
   setPrintCopies: (n: number) => void
   setPaperWidth: (w: 32 | 42 | 48) => void
   setPrintDensity: (d: number) => void
+  setPrintCopies: (n: number) => void
+  setCashDrawerEnabled: (v: boolean) => void
+  setDrawerIp: (ip: string) => void
+  setDrawerTcpPort: (p: number) => void
+  setUsbPrinterName: (name: string) => void
 }
 
 export const usePrinterStore = create<PrinterState>()(
@@ -41,6 +55,11 @@ export const usePrinterStore = create<PrinterState>()(
       printCopies: 1,
       paperWidth: 48,
       printDensity: 3,
+      printCopies: 1,
+      cashDrawerEnabled: false,
+      drawerIp: '',
+      drawerTcpPort: 9100,
+      usbPrinterName: '',
 
       setPrinterType: (t) => set({ printerType: t }),
       setSerialPath: (p) => set({ serialPath: p }),
@@ -50,6 +69,11 @@ export const usePrinterStore = create<PrinterState>()(
       setPrintCopies: (n) => set({ printCopies: Math.max(1, Math.min(5, n)) }),
       setPaperWidth: (w) => set({ paperWidth: w }),
       setPrintDensity: (d) => set({ printDensity: Math.max(0, Math.min(7, d)) }),
+      setPrintCopies: (n) => set({ printCopies: Math.max(1, Math.min(5, n)) }),
+      setCashDrawerEnabled: (v) => set({ cashDrawerEnabled: v }),
+      setDrawerIp: (ip) => set({ drawerIp: ip }),
+      setDrawerTcpPort: (p) => set({ drawerTcpPort: p }),
+      setUsbPrinterName: (name) => set({ usbPrinterName: name }),
     }),
     { name: 'pos-printer-settings' }
   )

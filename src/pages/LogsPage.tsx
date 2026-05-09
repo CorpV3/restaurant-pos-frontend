@@ -1,23 +1,67 @@
 import { useState, useEffect } from 'react'
 import { appLog, type LogEntry } from '../services/appLogger'
+import { isAndroidUpdateSupported, readAndroidUpdateLog, clearAndroidUpdateLog } from '../services/appUpdater'
 
 export default function LogsPage() {
   const [entries, setEntries] = useState<LogEntry[]>(appLog.getEntries())
   const [copied, setCopied] = useState(false)
+  const [loadingCrashLog, setLoadingCrashLog] = useState(false)
+  const isAndroid = isAndroidUpdateSupported()
 
   useEffect(() => {
     const unsub = appLog.subscribe(() => setEntries(appLog.getEntries()))
     return () => { unsub() }
   }, [])
 
+  const loadCrashLog = async () => {
+    setLoadingCrashLog(true)
+    const log = await readAndroidUpdateLog()
+    appLog.info('── Android Update Log ──')
+    log.split('\n').filter(Boolean).forEach((line) => {
+      if (line.includes('[ERROR]')) appLog.error(line)
+      else if (line.includes('[WARN]')) appLog.warn(line)
+      else appLog.info(line)
+    })
+    setLoadingCrashLog(false)
+  }
+
+  const clearCrashLog = async () => {
+    await clearAndroidUpdateLog()
+    appLog.info('Android update log cleared')
+  }
+
   const copyAll = () => {
     const text = entries
       .map((e) => `[${new Date(e.ts).toLocaleTimeString()}] [${e.level.toUpperCase()}] ${e.msg}`)
       .join('\n')
-    navigator.clipboard.writeText(text).then(() => {
+    // navigator.clipboard requires HTTPS — use execCommand fallback for Capacitor WebView
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 2000)
+        }).catch(() => legacyCopy(text))
+      } else {
+        legacyCopy(text)
+      }
+    } catch {
+      legacyCopy(text)
+    }
+  }
+
+  const legacyCopy = (text: string) => {
+    const el = document.createElement('textarea')
+    el.value = text
+    el.style.position = 'fixed'
+    el.style.opacity = '0'
+    document.body.appendChild(el)
+    el.select()
+    try {
+      document.execCommand('copy')
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    })
+    } catch {}
+    document.body.removeChild(el)
   }
 
   const levelColor = (level: LogEntry['level']) => {
@@ -51,6 +95,24 @@ export default function LogsPage() {
         >
           {copied ? 'Copied!' : 'Copy All'}
         </button>
+        {isAndroid && (
+          <button
+            onClick={loadCrashLog}
+            disabled={loadingCrashLog}
+            className="px-3 py-1.5 bg-orange-700 hover:bg-orange-600 text-white text-xs rounded-lg disabled:opacity-40"
+          >
+            {loadingCrashLog ? 'Loading...' : '📋 Update Log'}
+          </button>
+        )}
+        {isAndroid && (
+          <button
+            onClick={clearCrashLog}
+            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded-lg"
+            title="Clear Android update log file"
+          >
+            Clear File
+          </button>
+        )}
         <button
           onClick={() => { appLog.clear(); setEntries([]) }}
           disabled={entries.length === 0}
