@@ -119,11 +119,12 @@ export default function MenuGrid({ category, onCategoriesLoaded }: MenuGridProps
 
   return (
     <div className="flex-1 overflow-y-auto p-3">
-      <div className="grid grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
         {filteredMenu.map((item) => (
           <button
             key={item.id}
             onClick={() => handleItemClick(item)}
+            style={{ width: 'calc(33.333% - 8px)', flexShrink: 0 }}
             className={`flex flex-col items-center justify-center bg-gray-800 hover:bg-gray-700 border rounded-xl p-3 h-[150px] transition-all active:scale-95 relative ${
               item.is_deal
                 ? 'border-orange-600/70 hover:border-orange-400'

@@ -1,6 +1,7 @@
 /**
  * POS NumPad — replaces system keyboard for cash/amount inputs.
  * No <input> element → no system keyboard popup on Android/Electron.
+ * Uses inline flexbox styles for Android 5.x WebView compatibility (no CSS Grid).
  */
 interface NumPadProps {
   value: string
@@ -18,12 +19,9 @@ export default function NumPad({ value, onChange, quickAmounts, currencySymbol =
       onChange(value.slice(0, -1))
       return
     }
-    // Only one decimal point
     if (key === '.' && value.includes('.')) return
-    // Max 2 decimal places
     const dotIdx = value.indexOf('.')
     if (dotIdx !== -1 && value.length - dotIdx > 2) return
-    // Leading zero guard
     const next = value === '0' && key !== '.' ? key : value + key
     onChange(next)
   }
@@ -32,12 +30,13 @@ export default function NumPad({ value, onChange, quickAmounts, currencySymbol =
     <div className="space-y-2">
       {/* Quick amounts */}
       {quickAmounts && quickAmounts.length > 0 && (
-        <div className="grid grid-cols-4 gap-1.5">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
           {quickAmounts.map((amt) => (
             <button
               key={amt}
               type="button"
               onClick={() => onChange(amt.toFixed(2))}
+              style={{ width: 'calc(25% - 5px)', flexShrink: 0 }}
               className="py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm font-semibold rounded-xl transition-colors"
             >
               {currencySymbol}{amt}
@@ -55,12 +54,13 @@ export default function NumPad({ value, onChange, quickAmounts, currencySymbol =
       </div>
 
       {/* Key grid */}
-      <div className="grid grid-cols-3 gap-1.5">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
         {KEYS.map((key) => (
           <button
             key={key}
             type="button"
             onClick={() => press(key)}
+            style={{ width: 'calc(33.333% - 4px)', flexShrink: 0 }}
             className={`py-4 rounded-xl text-lg font-bold transition-all active:scale-95 ${
               key === '⌫'
                 ? 'bg-red-700/60 hover:bg-red-600/70 text-red-300'
