@@ -71,10 +71,9 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [markingReady, setMarkingReady] = useState<Set<string>>(new Set())
-  const advancingRef = useRef<Set<string>>(new Set()) // synchronous guard against double-tap
+  const advancingRef = useRef<Set<string>>(new Set())
   const [, setTick] = useState(0)
 
-  // Track printed order IDs so we don't print the same order twice
   const printedIds = useRef<Set<string>>(new Set())
   const isFirstLoad = useRef(true)
 
@@ -158,13 +157,11 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
         }))
         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
-      // On first load, seed printedIds so we don't auto-print existing orders
       if (isFirstLoad.current) {
         mapped.forEach((o) => printedIds.current.add(o.id))
         isFirstLoad.current = false
         appLog.info(`autoPrint: first load — seeded ${mapped.length} existing orders, will print new ones from next poll`)
       } else {
-        // Auto-print any new orders not yet printed
         const newOrders = mapped.filter((o) => !printedIds.current.has(o.id))
         if (newOrders.length > 0) {
           appLog.info(`autoPrint: poll found ${newOrders.length} new order(s)`)
@@ -174,6 +171,7 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
           autoPrintOrder(order)
         }
       }
+
 
       setOrders(mapped)
     } catch {
@@ -225,11 +223,11 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
     }
   }, [restaurant?.id])
 
-  // Refresh restaurant settings on mount (picks up auto_print_enabled etc.)
   useEffect(() => {
     refreshRestaurant()
     return () => { ledService.off() }
   }, [])
+
 
   useEffect(() => {
     setLoading(true)
@@ -276,7 +274,7 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
   }
 
   const advanceStatus = async (orderId: string, currentStatus: string) => {
-    if (advancingRef.current.has(orderId)) return  // synchronous double-tap guard
+    if (advancingRef.current.has(orderId)) return
     const nextStatus = NEXT_STATUS[currentStatus]
     if (!nextStatus) return
     advancingRef.current.add(orderId)
@@ -368,6 +366,12 @@ export default function ChefPanel({ onLogout }: ChefPanelProps) {
             onRefresh={fetchHistory}
             statusColor={statusColor}
           />
+        ) : restaurant?.chef_display_enabled === false ? (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
+            <span className="text-5xl">🖥️</span>
+            <p className="text-lg font-semibold text-gray-600">Kitchen Display Disabled</p>
+            <p className="text-sm text-gray-400">Chef display has been turned off by the restaurant admin</p>
+          </div>
         ) : loading ? (
           <div className="flex items-center justify-center h-full text-gray-400">
             Loading orders...

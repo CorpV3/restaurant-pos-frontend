@@ -368,6 +368,22 @@ export default function PrinterSettings() {
           </button>
         </label>
         <label className="flex items-center justify-between">
+          <span className="text-gray-300 text-sm">Number of copies</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPrintCopies(printCopies - 1)}
+              disabled={printCopies <= 1}
+              className="w-7 h-7 rounded-lg bg-gray-600 hover:bg-gray-500 text-white font-bold disabled:opacity-30 flex items-center justify-center"
+            >−</button>
+            <span className="text-white text-sm font-semibold w-4 text-center">{printCopies}</span>
+            <button
+              onClick={() => setPrintCopies(printCopies + 1)}
+              disabled={printCopies >= 5}
+              className="w-7 h-7 rounded-lg bg-gray-600 hover:bg-gray-500 text-white font-bold disabled:opacity-30 flex items-center justify-center"
+            >+</button>
+          </div>
+        </label>
+        <label className="flex items-center justify-between">
           <span className="text-gray-300 text-sm">Paper width</span>
           <select
             value={paperWidth}
