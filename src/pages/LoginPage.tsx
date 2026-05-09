@@ -302,11 +302,12 @@ export default function LoginPage() {
               Ask your manager to add a POS Passcode in the admin panel.
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
               {staff.map((s) => (
                 <button
                   key={s.id}
                   onClick={() => { setSelectedStaff(s); setPin(''); setPinError('') }}
+                  style={{ width: 'calc(50% - 6px)', flexShrink: 0 }}
                   className="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-orange-500 rounded-xl p-4 text-left transition-all"
                 >
                   <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center mb-2">
@@ -349,17 +350,18 @@ export default function LoginPage() {
             <p className="text-red-400 text-sm text-center mb-4">{pinError}</p>
           )}
 
-          {/* Number pad */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Number pad — flex-wrap for Android 5.x WebView compatibility (no CSS Grid) */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
             {['1','2','3','4','5','6','7','8','9','','0','⌫'].map((d, i) => (
               <button
                 key={i}
                 onClick={() => d === '⌫' ? handlePinDelete() : d ? handlePinDigit(d) : undefined}
                 disabled={pinLoading || !d}
-                className={`h-14 rounded-xl text-xl font-bold transition-all active:scale-95 ${
+                style={{ width: 'calc(33.333% - 8px)', height: '56px', flexShrink: 0 }}
+                className={`rounded-xl text-xl font-bold transition-all active:scale-95 ${
                   !d ? 'invisible' :
-                  d === '⌫' ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' :
-                  'bg-gray-700 text-white hover:bg-gray-600'
+                  d === '⌫' ? 'bg-gray-700 text-gray-300' :
+                  'bg-gray-700 text-white'
                 } disabled:opacity-50`}
               >
                 {pinLoading && pin.length === 4 ? '...' : d}
