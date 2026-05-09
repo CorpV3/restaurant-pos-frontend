@@ -14,14 +14,12 @@ interface PrinterState {
   savedName: string | null
   // Auto-print after payment
   autoPrint: boolean
-  // Number of copies for auto-print (1–5)
+  // Number of copies to print (1–5)
   printCopies: number
   // Paper width: 58mm (32 chars), 75mm (42 chars), or 80mm (48 chars)
   paperWidth: 32 | 42 | 48
   // Print darkness 0 (lightest) – 7 (darkest), ESC/POS DC2 # n
   printDensity: number
-  // Number of receipt copies to print
-  printCopies: number
   // Cash drawer: auto-open after payment (cash + card)
   cashDrawerEnabled: boolean
   // Windows only: receipt printer IP for TCP cash drawer kick (port 9100)
@@ -37,7 +35,6 @@ interface PrinterState {
   setPrintCopies: (n: number) => void
   setPaperWidth: (w: 32 | 42 | 48) => void
   setPrintDensity: (d: number) => void
-  setPrintCopies: (n: number) => void
   setCashDrawerEnabled: (v: boolean) => void
   setDrawerIp: (ip: string) => void
   setDrawerTcpPort: (p: number) => void
@@ -55,7 +52,6 @@ export const usePrinterStore = create<PrinterState>()(
       printCopies: 1,
       paperWidth: 48,
       printDensity: 3,
-      printCopies: 1,
       cashDrawerEnabled: false,
       drawerIp: '',
       drawerTcpPort: 9100,
@@ -69,7 +65,6 @@ export const usePrinterStore = create<PrinterState>()(
       setPrintCopies: (n) => set({ printCopies: Math.max(1, Math.min(5, n)) }),
       setPaperWidth: (w) => set({ paperWidth: w }),
       setPrintDensity: (d) => set({ printDensity: Math.max(0, Math.min(7, d)) }),
-      setPrintCopies: (n) => set({ printCopies: Math.max(1, Math.min(5, n)) }),
       setCashDrawerEnabled: (v) => set({ cashDrawerEnabled: v }),
       setDrawerIp: (ip) => set({ drawerIp: ip }),
       setDrawerTcpPort: (p) => set({ drawerTcpPort: p }),
