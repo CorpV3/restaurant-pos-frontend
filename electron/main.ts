@@ -40,8 +40,8 @@ function createWindow() {
 }
 
 // ── Auto-updater setup ────────────────────────────────────────────────────────
-autoUpdater.autoDownload = false       // user initiates download
-autoUpdater.autoInstallOnAppQuit = false
+autoUpdater.autoDownload = true
+autoUpdater.autoInstallOnAppQuit = true
 
 autoUpdater.on('update-available', (info) => {
   mainWindow?.webContents.send('update-available', {
