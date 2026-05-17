@@ -114,11 +114,12 @@ jobs:
           cp android-plugin/LedPlugin.java "$PKG/"
           cp android-plugin/UpdatePlugin.java "$PKG/"
           cp android-plugin/MainActivity.java "$PKG/"
+          cp android-plugin/BootReceiver.java "$PKG/"
 
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Patch Android — install permission + FileProvider
+      - name: Patch Android — install permission + FileProvider + boot receiver
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           XML_DIR="android/app/src/main/res/xml"
@@ -128,9 +129,19 @@ jobs:
             sed -i 's|<application|<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <application|' "$MANIFEST"
           fi
 
+          # Add RECEIVE_BOOT_COMPLETED permission (before <application> tag)
+          if ! grep -q "RECEIVE_BOOT_COMPLETED" "$MANIFEST"; then
+            sed -i 's|<application|<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <application|' "$MANIFEST"
+          fi
+
           # Add FileProvider inside <application> (before closing </application>)
           if ! grep -q "fileprovider" "$MANIFEST"; then
             sed -i 's|</application>|    <provider\n            android:name="androidx.core.content.FileProvider"\n            android:authorities="${applicationId}.fileprovider"\n            android:exported="false"\n            android:grantUriPermissions="true">\n            <meta-data\n                android:name="android.support.FILE_PROVIDER_PATHS"\n                android:resource="@xml/file_paths" />\n        </provider>\n    </application>|' "$MANIFEST"
+          fi
+
+          # Add BootReceiver inside <application> (before closing </application>)
+          if ! grep -q "BootReceiver" "$MANIFEST"; then
+            sed -i 's|</application>|    <receiver\n            android:name=".BootReceiver"\n            android:enabled="true"\n            android:exported="true">\n            <intent-filter>\n                <action android:name="android.intent.action.BOOT_COMPLETED" />\n                <action android:name="android.intent.action.QUICKBOOT_POWERON" />\n                <category android:name="android.intent.category.DEFAULT" />\n            </intent-filter>\n        </receiver>\n    </application>|' "$MANIFEST"
           fi
 
           # Create res/xml/file_paths.xml for FileProvider
