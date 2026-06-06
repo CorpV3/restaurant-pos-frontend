@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import { fetchAppVersion, isNewerVersion, type AppVersionInfo } from '../../services/systemService'
 import { downloadAndInstallAndroid, isAndroidUpdateSupported } from '../../services/appUpdater'
 
-const APP_VERSION = '1.0.66' // Keep in sync with package.json
+const APP_VERSION = '1.0.67' // Keep in sync with package.json
 
 const AUTO_INSTALL_COUNTDOWN = 30 // seconds before Windows auto-restarts
 
