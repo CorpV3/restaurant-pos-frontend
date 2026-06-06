@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { format } from 'date-fns'
 import { useAuthStore } from '../stores/authStore'
 import { usePrinterStore } from '../stores/printerStore'
@@ -468,6 +468,91 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
     </div>
   )
 
+  // Build refund modal outside JSX so TypeScript can narrow completedReceipt properly
+  let refundModal: React.ReactNode = null
+  if (showRefund && completedReceipt) {
+    const receipt = completedReceipt as CompletedReceipt
+    refundModal = (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+        <div className="bg-gray-800 rounded-2xl border border-gray-700 p-5 w-full max-w-sm space-y-3 shadow-2xl">
+          <div className="flex items-center justify-between">
+            <p className="text-white font-bold text-base">Issue Refund</p>
+            <button
+              onClick={() => { setShowRefund(false); setCardRefundStatus('idle') }}
+              disabled={refunding}
+              className="text-gray-400 hover:text-white text-xl leading-none disabled:opacity-40"
+            >
+              ✕
+            </button>
+          </div>
+          <p className="text-gray-400 text-sm">
+            Order #{receipt.order.id.slice(-6).toUpperCase()} —{' '}
+            <span className="text-white font-semibold">
+              {currencySymbol}{receipt.order.total_amount.toFixed(2)}
+            </span>
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setRefundMethod('cash')}
+              className={`flex-1 py-2 text-sm rounded-xl font-medium transition-colors ${refundMethod === 'cash' ? 'bg-green-700 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+            >
+              Cash
+            </button>
+            <button
+              onClick={() => setRefundMethod('card')}
+              className={`flex-1 py-2 text-sm rounded-xl font-medium transition-colors ${refundMethod === 'card' ? 'bg-blue-700 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+            >
+              Card
+            </button>
+          </div>
+          <input
+            type="number"
+            value={refundAmount}
+            onChange={(e) => setRefundAmount(e.target.value)}
+            placeholder={`Amount (max ${currencySymbol}${receipt.order.total_amount.toFixed(2)})`}
+            className="w-full bg-gray-700 border border-gray-600 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-red-500"
+            step="0.01"
+            max={receipt.order.total_amount}
+          />
+          <input
+            type="text"
+            value={refundReason}
+            onChange={(e) => setRefundReason(e.target.value)}
+            placeholder="Reason (optional)"
+            className="w-full bg-gray-700 border border-gray-600 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-red-500"
+          />
+          {refundMethod === 'card' && cardRefundStatus === 'waiting' && (
+            <div className="flex flex-col items-center gap-2 py-3 bg-blue-900/40 rounded-xl border border-blue-700">
+              <div className="animate-spin w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full" />
+              <p className="text-blue-300 text-sm font-medium">Tap card on terminal to refund...</p>
+            </div>
+          )}
+          {refundMethod === 'card' && cardRefundStatus === 'declined' && (
+            <p className="text-red-400 text-sm text-center">Card refund declined. Try again.</p>
+          )}
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => { setShowRefund(false); setCardRefundStatus('idle') }}
+              disabled={refunding}
+              className="flex-1 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-xl disabled:opacity-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRefund}
+              disabled={refunding || !refundAmount}
+              className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl disabled:opacity-50 transition-colors"
+            >
+              {refunding && refundMethod === 'card' && cardRefundStatus === 'waiting'
+                ? 'Waiting...'
+                : refunding ? 'Processing...' : 'Confirm Refund'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex-1 flex flex-col bg-gray-900 overflow-hidden">
       {/* Header */}
@@ -573,99 +658,8 @@ export default function PendingReceipts({ onCountChange }: PendingReceiptsProps)
         />
       )}
 
-      {/* Refund Modal */}
-      {showRefund && completedReceipt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-          <div className="bg-gray-800 rounded-2xl border border-gray-700 p-5 w-full max-w-sm space-y-3 shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <p className="text-white font-bold text-base">Issue Refund</p>
-              <button
-                onClick={() => { setShowRefund(false); setCardRefundStatus('idle') }}
-                disabled={refunding}
-                className="text-gray-400 hover:text-white text-xl leading-none disabled:opacity-40"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Order info */}
-            <p className="text-gray-400 text-sm">
-              Order #{completedReceipt.order.id.slice(-6).toUpperCase()} —{' '}
-              <span className="text-white font-semibold">
-                {currencySymbol}{completedReceipt.order.total_amount.toFixed(2)}
-              </span>
-            </p>
-
-            {/* Method toggle */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => setRefundMethod('cash')}
-                className={`flex-1 py-2 text-sm rounded-xl font-medium transition-colors ${refundMethod === 'cash' ? 'bg-green-700 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-              >
-                Cash
-              </button>
-              <button
-                onClick={() => setRefundMethod('card')}
-                className={`flex-1 py-2 text-sm rounded-xl font-medium transition-colors ${refundMethod === 'card' ? 'bg-blue-700 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-              >
-                Card
-              </button>
-            </div>
-
-            {/* Amount */}
-            <input
-              type="number"
-              value={refundAmount}
-              onChange={(e) => setRefundAmount(e.target.value)}
-              placeholder={`Amount (max ${currencySymbol}${completedReceipt.order.total_amount.toFixed(2)})`}
-              className="w-full bg-gray-700 border border-gray-600 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-red-500"
-              step="0.01"
-              max={completedReceipt.order.total_amount}
-            />
-
-            {/* Reason */}
-            <input
-              type="text"
-              value={refundReason}
-              onChange={(e) => setRefundReason(e.target.value)}
-              placeholder="Reason (optional)"
-              className="w-full bg-gray-700 border border-gray-600 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-red-500"
-            />
-
-            {/* Card terminal status */}
-            {refundMethod === 'card' && cardRefundStatus === 'waiting' && (
-              <div className="flex flex-col items-center gap-2 py-3 bg-blue-900/40 rounded-xl border border-blue-700">
-                <div className="animate-spin w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full" />
-                <p className="text-blue-300 text-sm font-medium">Tap card on terminal to refund...</p>
-              </div>
-            )}
-            {refundMethod === 'card' && cardRefundStatus === 'declined' && (
-              <p className="text-red-400 text-sm text-center">Card refund declined. Try again.</p>
-            )}
-
-            {/* Actions */}
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={() => { setShowRefund(false); setCardRefundStatus('idle') }}
-                disabled={refunding}
-                className="flex-1 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-xl disabled:opacity-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleRefund}
-                disabled={refunding || !refundAmount}
-                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl disabled:opacity-50 transition-colors"
-              >
-                {refunding && refundMethod === 'card' && cardRefundStatus === 'waiting'
-                  ? 'Waiting...'
-                  : refunding ? 'Processing...' : 'Confirm Refund'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Refund Modal — built above return to satisfy TypeScript narrowing */}
+      {refundModal}
     </div>
   )
 }
